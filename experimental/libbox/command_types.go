@@ -419,6 +419,50 @@ func systemProxyStatusFromGRPC(status *daemon.SystemProxyStatus) *SystemProxySta
 	}
 }
 
+type UserInfo struct {
+	UserName        string
+	Password        string
+	Uplink          int64
+	Downlink        int64
+	UplinkPackets   int64
+	DownlinkPackets int64
+	TCPSessions     int64
+	UDPSessions     int64
+}
+
+func userInfoFromGRPC(u *daemon.UserInfo) *UserInfo {
+	if u == nil {
+		return nil
+	}
+	return &UserInfo{
+		UserName:        u.UserName,
+		Password:        u.Password,
+		Uplink:          u.Uplink,
+		Downlink:        u.Downlink,
+		UplinkPackets:   u.UplinkPackets,
+		DownlinkPackets: u.DownlinkPackets,
+		TCPSessions:     u.TcpSessions,
+		UDPSessions:     u.UdpSessions,
+	}
+}
+
+type InboundInfo struct {
+	Tag          string
+	Type         string
+	IsManagedSSM bool
+}
+
+func inboundInfoFromGRPC(info *daemon.InboundInfo) *InboundInfo {
+	if info == nil {
+		return nil
+	}
+	return &InboundInfo{
+		Tag:          info.Tag,
+		Type:         info.Type,
+		IsManagedSSM: info.IsManagedSsm,
+	}
+}
+
 func systemProxyStatusToGRPC(status *SystemProxyStatus) *daemon.SystemProxyStatus {
 	if status == nil {
 		return nil

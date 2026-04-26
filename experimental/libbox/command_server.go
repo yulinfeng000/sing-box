@@ -66,6 +66,7 @@ func NewCommandServer(handler CommandServerHandler, platformInterface PlatformIn
 		// UserID:           sUserID,
 		// GroupID:          sGroupID,
 		// SystemProxyEnabled: false,
+		ConfigPath: filepath.Join(sBasePath, "config.json"),
 	})
 	return server, nil
 }

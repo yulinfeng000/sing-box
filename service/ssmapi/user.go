@@ -60,7 +60,12 @@ func (m *UserManager) Add(username string, password string) error {
 		return E.New("user ", username, " already exists")
 	}
 	m.usersMap[username] = password
-	return m.postUpdate(true)
+	err := m.postUpdate(true)
+	if err != nil {
+		delete(m.usersMap, username)
+		return E.Cause(err, "add user")
+	}
+	return nil
 }
 
 func (m *UserManager) Get(username string) (string, bool) {

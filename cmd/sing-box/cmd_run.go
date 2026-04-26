@@ -3,24 +3,38 @@ package main
 import (
 	"context"
 	"io"
+	"net"
 	"os"
 	"os/signal"
 	"path/filepath"
 	runtimeDebug "runtime/debug"
 	"sort"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
 	"github.com/sagernet/sing-box"
+	"github.com/sagernet/sing-box/adapter"
 	C "github.com/sagernet/sing-box/constant"
+	"github.com/sagernet/sing-box/daemon"
 	"github.com/sagernet/sing-box/log"
 	"github.com/sagernet/sing-box/option"
+	"github.com/sagernet/sing-box/service/ssmapi"
 	E "github.com/sagernet/sing/common/exceptions"
 	"github.com/sagernet/sing/common/json"
 	"github.com/sagernet/sing/common/json/badjson"
 
 	"github.com/spf13/cobra"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/reflection"
+	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/emptypb"
+)
+
+var (
+	grpcListen string
 )
 
 var commandRun = &cobra.Command{
@@ -35,7 +49,187 @@ var commandRun = &cobra.Command{
 }
 
 func init() {
+	commandRun.Flags().StringVar(&grpcListen, "grpc-listen", "", "gRPC control server listen address (e.g., unix:/tmp/sing-box.sock or 127.0.0.1:8080)")
 	mainCommand.AddCommand(commandRun)
+}
+
+// cliControlServer implements daemon.StartedServiceServer for the CLI context.
+type cliControlServer struct {
+	daemon.UnimplementedStartedServiceServer
+	box          *box.Box
+	userAccess   sync.Mutex
+	userManagers map[string]*ssmapi.UserManager
+	configPath   string
+}
+
+func newCLIControlServer(box *box.Box, configPath string) *cliControlServer {
+	return &cliControlServer{
+		box:          box,
+		userManagers: make(map[string]*ssmapi.UserManager),
+		configPath:   configPath,
+	}
+}
+
+func (s *cliControlServer) setBox(box *box.Box) {
+	s.box = box
+}
+
+func (s *cliControlServer) ensureUserManager(inboundTag string) (*ssmapi.UserManager, error) {
+	s.userAccess.Lock()
+	defer s.userAccess.Unlock()
+
+	if um, exists := s.userManagers[inboundTag]; exists {
+		return um, nil
+	}
+
+	if s.box == nil {
+		return nil, os.ErrInvalid
+	}
+
+	inbound, found := s.box.Inbound().Get(inboundTag)
+	if !found {
+		return nil, status.Error(codes.NotFound, "inbound not found: "+inboundTag)
+	}
+
+	managedServer, isManaged := inbound.(adapter.ManagedSSMServer)
+	if !isManaged {
+		return nil, status.Error(codes.FailedPrecondition, "inbound does not support user management: "+inboundTag)
+	}
+
+	traffic := ssmapi.NewTrafficManager()
+	managedServer.SetTracker(traffic)
+	um := ssmapi.NewUserManager(managedServer, traffic)
+	s.userManagers[inboundTag] = um
+	return um, nil
+}
+
+func (s *cliControlServer) ListUsers(ctx context.Context, request *daemon.ListUsersRequest) (*daemon.UserList, error) {
+	um, err := s.ensureUserManager(request.InboundTag)
+	if err != nil {
+		return nil, err
+	}
+	users := um.List()
+	protoUsers := make([]*daemon.UserInfo, 0, len(users))
+	for _, u := range users {
+		protoUsers = append(protoUsers, &daemon.UserInfo{
+			UserName: u.UserName,
+			Password: u.Password,
+		})
+	}
+	return &daemon.UserList{Users: protoUsers}, nil
+}
+
+func (s *cliControlServer) GetUser(ctx context.Context, request *daemon.GetUserRequest) (*daemon.UserInfo, error) {
+	um, err := s.ensureUserManager(request.InboundTag)
+	if err != nil {
+		return nil, err
+	}
+	password, found := um.Get(request.UserName)
+	if !found {
+		return nil, status.Error(codes.NotFound, "user not found: "+request.UserName)
+	}
+	return &daemon.UserInfo{
+		UserName: request.UserName,
+		Password: password,
+	}, nil
+}
+
+func (s *cliControlServer) AddUser(ctx context.Context, request *daemon.AddUserRequest) (*emptypb.Empty, error) {
+	um, err := s.ensureUserManager(request.InboundTag)
+	if err != nil {
+		return nil, err
+	}
+	err = um.Add(request.UserName, request.Password)
+	if err != nil {
+		return nil, gRPCError(err)
+	}
+	return &emptypb.Empty{}, nil
+}
+
+func (s *cliControlServer) UpdateUser(ctx context.Context, request *daemon.UpdateUserRequest) (*emptypb.Empty, error) {
+	um, err := s.ensureUserManager(request.InboundTag)
+	if err != nil {
+		return nil, err
+	}
+	_, found := um.Get(request.UserName)
+	if !found {
+		return nil, status.Error(codes.NotFound, "user not found: "+request.UserName)
+	}
+	err = um.Update(request.UserName, request.Password)
+	if err != nil {
+		return nil, gRPCError(err)
+	}
+	return &emptypb.Empty{}, nil
+}
+
+func (s *cliControlServer) DeleteUser(ctx context.Context, request *daemon.DeleteUserRequest) (*emptypb.Empty, error) {
+	um, err := s.ensureUserManager(request.InboundTag)
+	if err != nil {
+		return nil, err
+	}
+	_, found := um.Get(request.UserName)
+	if !found {
+		return nil, status.Error(codes.NotFound, "user not found: "+request.UserName)
+	}
+	err = um.Delete(request.UserName)
+	if err != nil {
+		return nil, gRPCError(err)
+	}
+	return &emptypb.Empty{}, nil
+}
+
+func (s *cliControlServer) ListInbounds(ctx context.Context, _ *emptypb.Empty) (*daemon.InboundList, error) {
+	if s.box == nil {
+		return &daemon.InboundList{}, nil
+	}
+	inbounds := s.box.Inbound().Inbounds()
+	list := make([]*daemon.InboundInfo, 0, len(inbounds))
+	for _, inbound := range inbounds {
+		_, isManaged := inbound.(adapter.ManagedSSMServer)
+		list = append(list, &daemon.InboundInfo{
+			Tag:          inbound.Tag(),
+			Type:         inbound.Type(),
+			IsManagedSsm: isManaged,
+		})
+	}
+	return &daemon.InboundList{Inbounds: list}, nil
+}
+
+func (s *cliControlServer) AddInbound(ctx context.Context, request *daemon.AddInboundRequest) (*emptypb.Empty, error) {
+	if s.box == nil {
+		return nil, os.ErrInvalid
+	}
+
+	// Inject type field into options JSON so UnmarshalJSONContext can find it
+	fullJSON := `{"type":"` + request.Type + `",` + request.OptionsJson[1:]
+	var inboundOption option.Inbound
+	err := json.UnmarshalContext(globalCtx, []byte(fullJSON), &inboundOption)
+	if err != nil {
+		return nil, status.Errorf(codes.InvalidArgument, "invalid options JSON: %v", err)
+	}
+
+	logger := s.box.LogFactory().NewLogger("inbound/" + request.Type + "[" + request.Tag + "]")
+	err = s.box.Inbound().Create(globalCtx, s.box.Router(), logger, request.Tag, request.Type, inboundOption.Options)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "create inbound: %v", err)
+	}
+
+	return &emptypb.Empty{}, nil
+}
+
+func (s *cliControlServer) RemoveInbound(ctx context.Context, request *daemon.RemoveInboundRequest) (*emptypb.Empty, error) {
+	if s.box == nil {
+		return nil, os.ErrInvalid
+	}
+	_, found := s.box.Inbound().Get(request.Tag)
+	if !found {
+		return nil, status.Error(codes.NotFound, "inbound not found: "+request.Tag)
+	}
+	err := s.box.Inbound().Remove(request.Tag)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "remove inbound: %v", err)
+	}
+	return &emptypb.Empty{}, nil
 }
 
 type OptionsEntry struct {
@@ -122,6 +316,8 @@ func readConfigAndMerge() (option.Options, error) {
 	return mergedOptions, nil
 }
 
+var cliCtrlServer *cliControlServer
+
 func create() (*box.Box, context.CancelFunc, error) {
 	options, err := readConfigAndMerge()
 	if err != nil {
@@ -163,6 +359,12 @@ func create() (*box.Box, context.CancelFunc, error) {
 		cancel()
 		return nil, nil, E.Cause(err, "start service")
 	}
+
+	// Register with gRPC control server
+	if cliCtrlServer != nil {
+		cliCtrlServer.setBox(instance)
+	}
+
 	return instance, cancel, nil
 }
 
@@ -170,9 +372,36 @@ func run() error {
 	osSignals := make(chan os.Signal, 1)
 	signal.Notify(osSignals, os.Interrupt, syscall.SIGTERM, syscall.SIGHUP)
 	defer signal.Stop(osSignals)
+
+	// Start gRPC control server if configured
+	var grpcListener net.Listener
+	var grpcServer *grpc.Server
+	if grpcListen != "" {
+		var err error
+		cliCtrlServer = newCLIControlServer(nil, configPaths[0])
+		if strings.HasPrefix(grpcListen, "unix:") {
+			sockPath := grpcListen[5:]
+			_ = os.Remove(sockPath)
+			grpcListener, err = net.Listen("unix", sockPath)
+		} else {
+			grpcListener, err = net.Listen("tcp", grpcListen)
+		}
+		if err != nil {
+			return E.Cause(err, "gRPC listen on ", grpcListen)
+		}
+		grpcServer = grpc.NewServer()
+		daemon.RegisterStartedServiceServer(grpcServer, cliCtrlServer)
+		reflection.Register(grpcServer)
+		go grpcServer.Serve(grpcListener)
+	}
+
 	for {
 		instance, cancel, err := create()
 		if err != nil {
+			if grpcServer != nil {
+				grpcServer.Stop()
+				grpcListener.Close()
+			}
 			return err
 		}
 		runtimeDebug.FreeOSMemory()
@@ -190,15 +419,33 @@ func run() error {
 			go closeMonitor(closeCtx)
 			err = instance.Close()
 			closed()
+			// Clear gRPC box reference
+			if cliCtrlServer != nil {
+				cliCtrlServer.setBox(nil)
+			}
 			if osSignal != syscall.SIGHUP {
 				if err != nil {
 					log.Error(E.Cause(err, "sing-box did not closed properly"))
+				}
+				if grpcServer != nil {
+					grpcServer.Stop()
+					grpcListener.Close()
 				}
 				return nil
 			}
 			break
 		}
 	}
+}
+
+func gRPCError(err error) error {
+	if strings.Contains(err.Error(), "already exists") {
+		return status.Error(codes.AlreadyExists, err.Error())
+	}
+	if strings.Contains(err.Error(), "not found") {
+		return status.Error(codes.NotFound, err.Error())
+	}
+	return status.Error(codes.Internal, err.Error())
 }
 
 func closeMonitor(ctx context.Context) {
