@@ -30,13 +30,18 @@ type Inbound struct {
 	logger   logger.ContextLogger
 	listener *listener.Listener
 	service  *shadowtls.Service
+	tracker  adapter.SSMTracker
+	version  int
 }
+
+var _ adapter.ManagedSSMServer = (*Inbound)(nil)
 
 func NewInbound(ctx context.Context, router adapter.Router, logger log.ContextLogger, tag string, options option.ShadowTLSInboundOptions) (adapter.Inbound, error) {
 	inbound := &Inbound{
 		Adapter: inbound.NewAdapter(C.TypeShadowTLS, tag),
 		router:  router,
 		logger:  logger,
+		version: options.Version,
 	}
 
 	if options.Version == 0 {
@@ -108,6 +113,25 @@ func (h *Inbound) Close() error {
 	return h.listener.Close()
 }
 
+func (h *Inbound) SetTracker(tracker adapter.SSMTracker) {
+	h.tracker = tracker
+}
+
+func (h *Inbound) UpdateUsers(users []string, uPSKs []string) error {
+	if h.version < 3 {
+		return nil
+	}
+	shadowTLSUsers := make([]shadowtls.User, 0, len(users))
+	for i, user := range users {
+		shadowTLSUsers = append(shadowTLSUsers, shadowtls.User{
+			Name:     user,
+			Password: uPSKs[i],
+		})
+	}
+	h.service.UpdateUsers(shadowTLSUsers)
+	return nil
+}
+
 func (h *Inbound) NewConnection(ctx context.Context, conn net.Conn, metadata adapter.InboundContext, onClose N.CloseHandlerFunc) {
 	err := h.service.NewConnection(adapter.WithContext(log.ContextWithNewID(ctx), &metadata), conn, metadata.Source, metadata.Destination, onClose)
 	N.CloseOnHandshakeFailure(conn, onClose, err)
@@ -136,6 +160,9 @@ func (h *inboundHandler) NewConnectionEx(ctx context.Context, conn net.Conn, sou
 		h.logger.InfoContext(ctx, "[", userName, "] inbound connection to ", metadata.Destination)
 	} else {
 		h.logger.InfoContext(ctx, "inbound connection to ", metadata.Destination)
+	}
+	if h.tracker != nil {
+		conn = h.tracker.TrackConnection(conn, metadata)
 	}
 	h.router.RouteConnectionEx(ctx, conn, metadata, onClose)
 }

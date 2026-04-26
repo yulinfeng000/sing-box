@@ -1,9 +1,11 @@
 package daemon
 
 import (
+	"bytes"
 	"context"
 	"os"
 	"runtime"
+	"strings"
 	"sync"
 	"time"
 	"unsafe"
@@ -18,11 +20,14 @@ import (
 	"github.com/sagernet/sing-box/experimental/clashapi/trafficontrol"
 	"github.com/sagernet/sing-box/experimental/deprecated"
 	"github.com/sagernet/sing-box/log"
+	"github.com/sagernet/sing-box/option"
 	"github.com/sagernet/sing-box/protocol/group"
 	"github.com/sagernet/sing-box/service/oomkiller"
+	"github.com/sagernet/sing-box/service/ssmapi"
 	"github.com/sagernet/sing/common"
 	"github.com/sagernet/sing/common/batch"
 	E "github.com/sagernet/sing/common/exceptions"
+	"github.com/sagernet/sing/common/json"
 	"github.com/sagernet/sing/common/memory"
 	"github.com/sagernet/sing/common/observable"
 	"github.com/sagernet/sing/common/x/list"
@@ -69,6 +74,16 @@ type StartedService struct {
 
 	connectionEventSubscriber *observable.Subscriber[trafficontrol.ConnectionEvent]
 	connectionEventObserver   *observable.Observer[trafficontrol.ConnectionEvent]
+
+	// User management
+	userAccess   sync.Mutex
+	userManagers map[string]*ssmapi.UserManager
+
+	// Config persistence
+	configAccess   sync.Mutex
+	configPath     string
+	configOptions  *option.Options
+	inboundOptions map[string]*option.Inbound
 }
 
 type ServiceOptions struct {
@@ -85,6 +100,7 @@ type ServiceOptions struct {
 	// UserID             int
 	// GroupID            int
 	// SystemProxyEnabled bool
+	ConfigPath string
 }
 
 func NewStartedService(options ServiceOptions) *StartedService {
@@ -102,6 +118,7 @@ func NewStartedService(options ServiceOptions) *StartedService {
 		// userID:           options.UserID,
 		// groupID:          options.GroupID,
 		// systemProxyEnabled:      options.SystemProxyEnabled,
+		configPath:                options.ConfigPath,
 		serviceStatus:             &ServiceStatus{Status: ServiceStatus_IDLE},
 		serviceStatusSubscriber:   observable.NewSubscriber[*ServiceStatus](4),
 		logSubscriber:             observable.NewSubscriber[*log.Entry](128),
@@ -109,6 +126,8 @@ func NewStartedService(options ServiceOptions) *StartedService {
 		urlTestHistoryStorage:     urltest.NewHistoryStorage(),
 		clashModeSubscriber:       observable.NewSubscriber[struct{}](1),
 		connectionEventSubscriber: observable.NewSubscriber[trafficontrol.ConnectionEvent](256),
+		userManagers:              make(map[string]*ssmapi.UserManager),
+		inboundOptions:            make(map[string]*option.Inbound),
 	}
 	s.serviceStatusObserver = observable.NewObserver(s.serviceStatusSubscriber, 2)
 	s.logObserver = observable.NewObserver(s.logSubscriber, 64)
@@ -251,6 +270,17 @@ func (s *StartedService) CloseService() error {
 	s.startedAt = time.Time{}
 	s.updateStatus(ServiceStatus_IDLE)
 	s.serviceAccess.Unlock()
+
+	// Clean up user managers
+	s.userAccess.Lock()
+	s.userManagers = make(map[string]*ssmapi.UserManager)
+	s.userAccess.Unlock()
+
+	// Clean up config
+	s.configAccess.Lock()
+	s.configOptions = nil
+	s.inboundOptions = make(map[string]*option.Inbound)
+	s.configAccess.Unlock()
 	runtime.GC()
 	return nil
 }
@@ -1466,6 +1496,280 @@ func (s *StartedService) StartTailscalePing(
 }
 
 func (s *StartedService) mustEmbedUnimplementedStartedServiceServer() {
+}
+
+// storeConfig saves the parsed config options for later persistence.
+func (s *StartedService) storeConfig(opts *option.Options) {
+	s.configAccess.Lock()
+	defer s.configAccess.Unlock()
+
+	s.configOptions = opts
+	s.inboundOptions = make(map[string]*option.Inbound, len(opts.Inbounds))
+	for i := range opts.Inbounds {
+		tag := opts.Inbounds[i].Tag
+		if tag == "" {
+			continue
+		}
+		s.inboundOptions[tag] = &opts.Inbounds[i]
+	}
+}
+
+// ensureUserManager returns a UserManager for the given inbound tag, creating one if needed.
+func (s *StartedService) ensureUserManager(inboundTag string) (*ssmapi.UserManager, error) {
+	s.userAccess.Lock()
+	defer s.userAccess.Unlock()
+
+	if um, exists := s.userManagers[inboundTag]; exists {
+		return um, nil
+	}
+
+	s.serviceAccess.RLock()
+	instance := s.instance
+	s.serviceAccess.RUnlock()
+
+	if instance == nil {
+		return nil, os.ErrInvalid
+	}
+
+	inbound, found := instance.Box().Inbound().Get(inboundTag)
+	if !found {
+		return nil, status.Error(codes.NotFound, "inbound not found: "+inboundTag)
+	}
+
+	managedServer, isManaged := inbound.(adapter.ManagedSSMServer)
+	if !isManaged {
+		return nil, status.Error(codes.FailedPrecondition, "inbound does not support user management: "+inboundTag)
+	}
+
+	traffic := ssmapi.NewTrafficManager()
+	managedServer.SetTracker(traffic)
+	um := ssmapi.NewUserManager(managedServer, traffic)
+	s.userManagers[inboundTag] = um
+	return um, nil
+}
+
+// ListUsers returns all users for the specified inbound.
+func (s *StartedService) ListUsers(ctx context.Context, request *ListUsersRequest) (*UserList, error) {
+	um, err := s.ensureUserManager(request.InboundTag)
+	if err != nil {
+		return nil, err
+	}
+	users := um.List()
+	protoUsers := make([]*UserInfo, 0, len(users))
+	for _, u := range users {
+		protoUsers = append(protoUsers, &UserInfo{
+			UserName: u.UserName,
+			Password: u.Password,
+		})
+	}
+	return &UserList{Users: protoUsers}, nil
+}
+
+// GetUser returns a single user by name.
+func (s *StartedService) GetUser(ctx context.Context, request *GetUserRequest) (*UserInfo, error) {
+	um, err := s.ensureUserManager(request.InboundTag)
+	if err != nil {
+		return nil, err
+	}
+	password, found := um.Get(request.UserName)
+	if !found {
+		return nil, status.Error(codes.NotFound, "user not found: "+request.UserName)
+	}
+	return &UserInfo{
+		UserName: request.UserName,
+		Password: password,
+	}, nil
+}
+
+// AddUser creates a new user on the specified inbound.
+func (s *StartedService) AddUser(ctx context.Context, request *AddUserRequest) (*emptypb.Empty, error) {
+	um, err := s.ensureUserManager(request.InboundTag)
+	if err != nil {
+		return nil, err
+	}
+	err = um.Add(request.UserName, request.Password)
+	if err != nil {
+		return nil, grpcErrorFromSSM(err)
+	}
+	return &emptypb.Empty{}, nil
+}
+
+// UpdateUser updates an existing user's password.
+func (s *StartedService) UpdateUser(ctx context.Context, request *UpdateUserRequest) (*emptypb.Empty, error) {
+	um, err := s.ensureUserManager(request.InboundTag)
+	if err != nil {
+		return nil, err
+	}
+	_, found := um.Get(request.UserName)
+	if !found {
+		return nil, status.Error(codes.NotFound, "user not found: "+request.UserName)
+	}
+	err = um.Update(request.UserName, request.Password)
+	if err != nil {
+		return nil, grpcErrorFromSSM(err)
+	}
+	return &emptypb.Empty{}, nil
+}
+
+// DeleteUser removes a user from the specified inbound.
+func (s *StartedService) DeleteUser(ctx context.Context, request *DeleteUserRequest) (*emptypb.Empty, error) {
+	um, err := s.ensureUserManager(request.InboundTag)
+	if err != nil {
+		return nil, err
+	}
+	_, found := um.Get(request.UserName)
+	if !found {
+		return nil, status.Error(codes.NotFound, "user not found: "+request.UserName)
+	}
+	err = um.Delete(request.UserName)
+	if err != nil {
+		return nil, grpcErrorFromSSM(err)
+	}
+	return &emptypb.Empty{}, nil
+}
+
+// ListInbounds returns all currently running inbounds.
+func (s *StartedService) ListInbounds(ctx context.Context, _ *emptypb.Empty) (*InboundList, error) {
+	s.serviceAccess.RLock()
+	instance := s.instance
+	s.serviceAccess.RUnlock()
+
+	if instance == nil {
+		return &InboundList{}, nil
+	}
+
+	inbounds := instance.Box().Inbound().Inbounds()
+	list := make([]*InboundInfo, 0, len(inbounds))
+	for _, inbound := range inbounds {
+		_, isManaged := inbound.(adapter.ManagedSSMServer)
+		list = append(list, &InboundInfo{
+			Tag:          inbound.Tag(),
+			Type:         inbound.Type(),
+			IsManagedSsm: isManaged,
+		})
+	}
+	return &InboundList{Inbounds: list}, nil
+}
+
+// AddInbound creates a new inbound at runtime and persists the config.
+func (s *StartedService) AddInbound(ctx context.Context, request *AddInboundRequest) (*emptypb.Empty, error) {
+	s.serviceAccess.RLock()
+	instance := s.instance
+	s.serviceAccess.RUnlock()
+
+	if instance == nil {
+		return nil, os.ErrInvalid
+	}
+
+	inboundRegistry := service.FromContext[option.InboundOptionsRegistry](instance.ctx)
+	options, found := inboundRegistry.CreateOptions(request.Type)
+	if !found {
+		return nil, status.Errorf(codes.InvalidArgument, "unknown inbound type: %s", request.Type)
+	}
+
+	err := json.UnmarshalContext(instance.ctx, []byte(request.OptionsJson), options)
+	if err != nil {
+		return nil, status.Errorf(codes.InvalidArgument, "invalid options JSON: %v", err)
+	}
+
+	box := instance.Box()
+	logger := box.LogFactory().NewLogger("inbound/" + request.Type + "[" + request.Tag + "]")
+	err = box.Inbound().Create(instance.ctx, box.Router(), logger, request.Tag, request.Type, options)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "create inbound: %v", err)
+	}
+
+	err = s.persistConfig()
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "persist config: %v", err)
+	}
+
+	return &emptypb.Empty{}, nil
+}
+
+// RemoveInbound removes an inbound at runtime and persists the config.
+func (s *StartedService) RemoveInbound(ctx context.Context, request *RemoveInboundRequest) (*emptypb.Empty, error) {
+	s.serviceAccess.RLock()
+	instance := s.instance
+	s.serviceAccess.RUnlock()
+
+	if instance == nil {
+		return nil, os.ErrInvalid
+	}
+
+	_, found := instance.Box().Inbound().Get(request.Tag)
+	if !found {
+		return nil, status.Error(codes.NotFound, "inbound not found: "+request.Tag)
+	}
+
+	err := instance.Box().Inbound().Remove(request.Tag)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "remove inbound: %v", err)
+	}
+
+	err = s.persistConfig()
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "persist config: %v", err)
+	}
+
+	return &emptypb.Empty{}, nil
+}
+
+// persistConfig serializes the current config and writes it to disk.
+func (s *StartedService) persistConfig() error {
+	s.configAccess.Lock()
+	configPath := s.configPath
+	configOpts := s.configOptions
+	inboundOpts := s.inboundOptions
+	s.configAccess.Unlock()
+
+	if configPath == "" || configOpts == nil {
+		return nil
+	}
+
+	s.serviceAccess.RLock()
+	instance := s.instance
+	s.serviceAccess.RUnlock()
+
+	if instance == nil {
+		return nil
+	}
+
+	// Rebuild inbound list from running inbounds
+	currentInbounds := instance.Box().Inbound().Inbounds()
+	newInboundOpts := make([]option.Inbound, 0, len(currentInbounds))
+	for _, inbound := range currentInbounds {
+		tag := inbound.Tag()
+		if existing, ok := inboundOpts[tag]; ok {
+			newInboundOpts = append(newInboundOpts, *existing)
+		} else {
+			newInboundOpts = append(newInboundOpts, option.Inbound{
+				Type: inbound.Type(),
+				Tag:  tag,
+			})
+		}
+	}
+	configOpts.Inbounds = newInboundOpts
+
+	var buffer bytes.Buffer
+	encoder := json.NewEncoder(&buffer)
+	encoder.SetIndent("", "  ")
+	err := encoder.Encode(configOpts)
+	if err != nil {
+		return err
+	}
+
+	return os.WriteFile(configPath, buffer.Bytes(), 0o644)
+}
+
+func grpcErrorFromSSM(err error) error {
+	if strings.Contains(err.Error(), "already exists") {
+		return status.Error(codes.AlreadyExists, err.Error())
+	}
+	if strings.Contains(err.Error(), "not found") {
+		return status.Error(codes.NotFound, err.Error())
+	}
+	return status.Error(codes.Internal, err.Error())
 }
 
 func (s *StartedService) WriteMessage(level log.Level, message string) {

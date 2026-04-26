@@ -780,6 +780,120 @@ func (c *CommandClient) SubscribeTailscaleStatus(handler TailscaleStatusHandler)
 	}
 }
 
+// User management
+
+func (c *CommandClient) ListUsers(inboundTag string) ([]*UserInfo, error) {
+	return callWithResult(c, func(client daemon.StartedServiceClient) ([]*UserInfo, error) {
+		userList, err := client.ListUsers(context.Background(), &daemon.ListUsersRequest{
+			InboundTag: inboundTag,
+		})
+		if err != nil {
+			return nil, err
+		}
+		users := make([]*UserInfo, 0, len(userList.Users))
+		for _, u := range userList.Users {
+			users = append(users, userInfoFromGRPC(u))
+		}
+		return users, nil
+	})
+}
+
+func (c *CommandClient) GetUser(inboundTag, userName string) (*UserInfo, error) {
+	return callWithResult(c, func(client daemon.StartedServiceClient) (*UserInfo, error) {
+		u, err := client.GetUser(context.Background(), &daemon.GetUserRequest{
+			InboundTag: inboundTag,
+			UserName:   userName,
+		})
+		if err != nil {
+			return nil, err
+		}
+		return userInfoFromGRPC(u), nil
+	})
+}
+
+func (c *CommandClient) AddUser(inboundTag, userName, password string) error {
+	_, err := callWithResult(c, func(client daemon.StartedServiceClient) (*emptypb.Empty, error) {
+		return client.AddUser(context.Background(), &daemon.AddUserRequest{
+			InboundTag: inboundTag,
+			UserName:   userName,
+			Password:   password,
+		})
+	})
+	if err != nil {
+		return E.Cause(err, "add user")
+	}
+	return nil
+}
+
+func (c *CommandClient) UpdateUser(inboundTag, userName, password string) error {
+	_, err := callWithResult(c, func(client daemon.StartedServiceClient) (*emptypb.Empty, error) {
+		return client.UpdateUser(context.Background(), &daemon.UpdateUserRequest{
+			InboundTag: inboundTag,
+			UserName:   userName,
+			Password:   password,
+		})
+	})
+	if err != nil {
+		return E.Cause(err, "update user")
+	}
+	return nil
+}
+
+func (c *CommandClient) DeleteUser(inboundTag, userName string) error {
+	_, err := callWithResult(c, func(client daemon.StartedServiceClient) (*emptypb.Empty, error) {
+		return client.DeleteUser(context.Background(), &daemon.DeleteUserRequest{
+			InboundTag: inboundTag,
+			UserName:   userName,
+		})
+	})
+	if err != nil {
+		return E.Cause(err, "delete user")
+	}
+	return nil
+}
+
+// Inbound management
+
+func (c *CommandClient) ListInbounds() ([]*InboundInfo, error) {
+	return callWithResult(c, func(client daemon.StartedServiceClient) ([]*InboundInfo, error) {
+		inboundList, err := client.ListInbounds(context.Background(), &emptypb.Empty{})
+		if err != nil {
+			return nil, err
+		}
+		inbounds := make([]*InboundInfo, 0, len(inboundList.Inbounds))
+		for _, info := range inboundList.Inbounds {
+			inbounds = append(inbounds, inboundInfoFromGRPC(info))
+		}
+		return inbounds, nil
+	})
+}
+
+func (c *CommandClient) AddInbound(tag, inboundType, optionsJSON string) error {
+	_, err := callWithResult(c, func(client daemon.StartedServiceClient) (*emptypb.Empty, error) {
+		return client.AddInbound(context.Background(), &daemon.AddInboundRequest{
+			Tag:         tag,
+			Type:        inboundType,
+			OptionsJson: optionsJSON,
+		})
+	})
+	if err != nil {
+		return E.Cause(err, "add inbound")
+	}
+	return nil
+}
+
+func (c *CommandClient) RemoveInbound(tag string) error {
+	_, err := callWithResult(c, func(client daemon.StartedServiceClient) (*emptypb.Empty, error) {
+		return client.RemoveInbound(context.Background(), &daemon.RemoveInboundRequest{
+			Tag: tag,
+		})
+	})
+	if err != nil {
+		return E.Cause(err, "remove inbound")
+	}
+	return nil
+}
+
 func (c *CommandClient) StartTailscalePing(endpointTag string, peerIP string, handler TailscalePingHandler) error {
 	client, err := c.getClientForCall()
 	if err != nil {

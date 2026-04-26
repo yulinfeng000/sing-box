@@ -40,6 +40,18 @@ service StartedService {
   rpc StartSTUNTest(STUNTestRequest) returns (stream STUNTestProgress) {}
   rpc SubscribeTailscaleStatus(google.protobuf.Empty) returns (stream TailscaleStatusUpdate) {}
   rpc StartTailscalePing(TailscalePingRequest) returns (stream TailscalePingResponse) {}
+
+  // User management
+  rpc ListUsers(ListUsersRequest) returns (UserList) {}
+  rpc GetUser(GetUserRequest) returns (UserInfo) {}
+  rpc AddUser(AddUserRequest) returns (google.protobuf.Empty) {}
+  rpc UpdateUser(UpdateUserRequest) returns (google.protobuf.Empty) {}
+  rpc DeleteUser(DeleteUserRequest) returns (google.protobuf.Empty) {}
+
+  // Inbound management
+  rpc ListInbounds(google.protobuf.Empty) returns (InboundList) {}
+  rpc AddInbound(AddInboundRequest) returns (google.protobuf.Empty) {}
+  rpc RemoveInbound(RemoveInboundRequest) returns (google.protobuf.Empty) {}
 }
 
 message ServiceStatus {
@@ -328,4 +340,67 @@ message TailscalePingResponse {
   int32 derpRegionID = 4;
   string derpRegionCode = 5;
   string error = 6;
+}
+
+// User management messages
+message ListUsersRequest {
+  string inbound_tag = 1;
+}
+
+message GetUserRequest {
+  string inbound_tag = 1;
+  string user_name = 2;
+}
+
+message AddUserRequest {
+  string inbound_tag = 1;
+  string user_name = 2;
+  string password = 3;
+}
+
+message UpdateUserRequest {
+  string inbound_tag = 1;
+  string user_name = 2;
+  string password = 3;
+}
+
+message DeleteUserRequest {
+  string inbound_tag = 1;
+  string user_name = 2;
+}
+
+message UserInfo {
+  string user_name = 1;
+  string password = 2;
+  int64 uplink = 3;
+  int64 downlink = 4;
+  int64 uplink_packets = 5;
+  int64 downlink_packets = 6;
+  int64 tcp_sessions = 7;
+  int64 udp_sessions = 8;
+}
+
+message UserList {
+  repeated UserInfo users = 1;
+}
+
+// Inbound management messages
+message InboundInfo {
+  string tag = 1;
+  string type = 2;
+  bool is_managed_ssm = 3;
+}
+
+message InboundList {
+  repeated InboundInfo inbounds = 1;
+}
+
+message AddInboundRequest {
+  string tag = 1;
+  string type = 2;
+  string options_json = 3;
+}
+
+message RemoveInboundRequest {
+  string tag = 1;
 }

@@ -171,3 +171,5 @@ require (
 	lukechampine.com/blake3 v1.3.0 // indirect
 	zombiezen.com/go/capnproto2 v2.18.2+incompatible // indirect
 )
+
+replace github.com/sagernet/sing-shadowtls v0.2.1-0.20250503051639-fcd445d33c11 => ./local/sing-shadowtls

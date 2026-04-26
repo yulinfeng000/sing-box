@@ -118,6 +118,7 @@ func (s *StartedService) newInstance(profileContent string, overrideOptions *Ove
 		return nil, err
 	}
 	i.instance = boxInstance
+	s.storeConfig(&options)
 	i.connectionManager = service.FromContext[adapter.ConnectionManager](ctx)
 	i.clashServer = service.FromContext[adapter.ClashServer](ctx)
 	i.pauseManager = service.FromContext[pause.Manager](ctx)

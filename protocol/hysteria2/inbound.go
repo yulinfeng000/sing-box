@@ -37,7 +37,11 @@ type Inbound struct {
 	tlsConfig    tls.ServerConfig
 	service      *hysteria2.Service[int]
 	userNameList []string
+	userMap      map[string]int
+	tracker      adapter.SSMTracker
 }
+
+var _ adapter.ManagedSSMServer = (*Inbound)(nil)
 
 func NewInbound(ctx context.Context, router adapter.Router, logger log.ContextLogger, tag string, options option.Hysteria2InboundOptions) (adapter.Inbound, error) {
 	options.UDPFragmentDefault = true
@@ -97,6 +101,10 @@ func NewInbound(ctx context.Context, router adapter.Router, logger log.ContextLo
 			return nil, E.New("unknown masquerade type: ", options.Masquerade.Type)
 		}
 	}
+	userMap := make(map[string]int, len(options.Users))
+	for index, user := range options.Users {
+		userMap[user.Name] = index
+	}
 	inbound := &Inbound{
 		Adapter: inbound.NewAdapter(C.TypeHysteria2, tag),
 		router:  router,
@@ -107,6 +115,7 @@ func NewInbound(ctx context.Context, router adapter.Router, logger log.ContextLo
 			Listen:  options.ListenOptions,
 		}),
 		tlsConfig: tlsConfig,
+		userMap:   userMap,
 	}
 	var udpTimeout time.Duration
 	if options.UDPTimeout != 0 {
@@ -167,11 +176,14 @@ func (h *Inbound) NewConnectionEx(ctx context.Context, conn net.Conn, source M.S
 	metadata.Destination = destination
 	h.logger.InfoContext(ctx, "inbound connection from ", metadata.Source)
 	userID, _ := auth.UserFromContext[int](ctx)
-	if userName := h.userNameList[userID]; userName != "" {
-		metadata.User = userName
-		h.logger.InfoContext(ctx, "[", userName, "] inbound connection to ", metadata.Destination)
+	if userID < len(h.userNameList) && h.userNameList[userID] != "" {
+		metadata.User = h.userNameList[userID]
+		h.logger.InfoContext(ctx, "[", metadata.User, "] inbound connection to ", metadata.Destination)
 	} else {
 		h.logger.InfoContext(ctx, "inbound connection to ", metadata.Destination)
+	}
+	if h.tracker != nil {
+		conn = h.tracker.TrackConnection(conn, metadata)
 	}
 	h.router.RouteConnectionEx(ctx, conn, metadata, onClose)
 }
@@ -189,11 +201,14 @@ func (h *Inbound) NewPacketConnectionEx(ctx context.Context, conn N.PacketConn, 
 	metadata.Destination = destination
 	h.logger.InfoContext(ctx, "inbound packet connection from ", metadata.Source)
 	userID, _ := auth.UserFromContext[int](ctx)
-	if userName := h.userNameList[userID]; userName != "" {
-		metadata.User = userName
-		h.logger.InfoContext(ctx, "[", userName, "] inbound packet connection to ", metadata.Destination)
+	if userID < len(h.userNameList) && h.userNameList[userID] != "" {
+		metadata.User = h.userNameList[userID]
+		h.logger.InfoContext(ctx, "[", metadata.User, "] inbound packet connection to ", metadata.Destination)
 	} else {
 		h.logger.InfoContext(ctx, "inbound packet connection to ", metadata.Destination)
+	}
+	if h.tracker != nil {
+		conn = h.tracker.TrackPacketConnection(conn, metadata)
 	}
 	h.router.RoutePacketConnectionEx(ctx, conn, metadata, onClose)
 }
@@ -221,4 +236,23 @@ func (h *Inbound) Close() error {
 		h.tlsConfig,
 		common.PtrOrNil(h.service),
 	)
+}
+
+func (h *Inbound) SetTracker(tracker adapter.SSMTracker) {
+	h.tracker = tracker
+}
+
+func (h *Inbound) UpdateUsers(users []string, uPSKs []string) error {
+	userList := make([]int, 0, len(users))
+	userPasswordList := make([]string, 0, len(users))
+	newUserMap := make(map[string]int, len(users))
+	for i, user := range users {
+		userList = append(userList, i)
+		userPasswordList = append(userPasswordList, uPSKs[i])
+		newUserMap[user] = i
+	}
+	h.service.UpdateUsers(userList, userPasswordList)
+	h.userNameList = users
+	h.userMap = newUserMap
+	return nil
 }
