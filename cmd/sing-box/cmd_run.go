@@ -599,6 +599,10 @@ func create() (*box.Box, context.CancelFunc, error) {
 		cliCtrlServer.setCacheFile(service.FromContext[adapter.CacheFile](ctx))
 	}
 
+	// Update global std logger so gRPC handler log messages respect
+	// the configured timestamp/format settings.
+	log.SetStdLogger(instance.LogFactory().Logger())
+
 	return instance, cancel, nil
 }
 
@@ -607,15 +611,28 @@ func run() error {
 	signal.Notify(osSignals, os.Interrupt, syscall.SIGTERM, syscall.SIGHUP)
 	defer signal.Stop(osSignals)
 
-	// Resolve gRPC settings: CLI flags take precedence over config file
+	// Read config early to resolve gRPC settings and set up logging.
+	// CLI flags take precedence over config file.
 	grpcListenAddr := grpcListen
 	grpcAuthSecret := grpcSecret
-	if options, err := readConfigAndMerge(); err == nil && options.GRPC != nil {
-		if grpcListenAddr == "" && options.GRPC.Listen != "" {
-			grpcListenAddr = options.GRPC.Listen
+	if options, err := readConfigAndMerge(); err == nil {
+		if options.Log != nil && !options.Log.Disabled {
+			logFormatter := log.Formatter{
+				BaseTime:         time.Now(),
+				DisableColors:    options.Log.DisableColor,
+				DisableTimestamp: !options.Log.Timestamp,
+				FullTimestamp:    options.Log.Timestamp,
+				TimestampFormat:  "-0700 2006-01-02 15:04:05",
+			}
+			log.SetStdLogger(log.NewDefaultFactory(globalCtx, logFormatter, os.Stderr, "", nil, false).Logger())
 		}
-		if grpcAuthSecret == "" && options.GRPC.Secret != "" {
-			grpcAuthSecret = options.GRPC.Secret
+		if options.GRPC != nil {
+			if grpcListenAddr == "" && options.GRPC.Listen != "" {
+				grpcListenAddr = options.GRPC.Listen
+			}
+			if grpcAuthSecret == "" && options.GRPC.Secret != "" {
+				grpcAuthSecret = options.GRPC.Secret
+			}
 		}
 	}
 	// Update package-level var so auth interceptors use the resolved secret
@@ -679,6 +696,7 @@ func run() error {
 			if cliCtrlServer != nil {
 				cliCtrlServer.setBox(nil)
 			}
+			log.SetStdLogger(log.NewDefaultFactory(context.Background(), log.Formatter{BaseTime: time.Now()}, os.Stderr, "", nil, false).Logger())
 			if osSignal != syscall.SIGHUP {
 				if err != nil {
 					log.Error(E.Cause(err, "sing-box did not closed properly"))

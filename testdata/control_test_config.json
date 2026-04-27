@@ -1,13 +1,14 @@
 {
   "log": {
-    "level": "info"
+    "level": "info",
+    "timestamp": true
   },
   "inbounds": [
     {
       "type": "shadowsocks",
       "tag": "ss-in",
       "method": "2022-blake3-aes-128-gcm",
-      "password": "QZaglNMKagCkksjFqpJwKw=="
+      "password": "mIN99tQp3BQn1TisS/X8QQ=="
     },
     {
       "type": "shadowtls",
@@ -19,7 +20,7 @@
       "users": [
         {
           "name": "tomcat",
-          "password": "dsEa54ZiRtDnu57WkCR4Dw=="
+          "password": "aM7GnU+xNy1ELleshec1uw=="
         }
       ],
       "handshake": {
