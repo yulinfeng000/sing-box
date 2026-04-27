@@ -23,7 +23,7 @@ func (v *NetworkList) UnmarshalJSON(content []byte) error {
 		if err != nil {
 			return err
 		}
-		networkList = []string{networkItem}
+		networkList = strings.Split(networkItem, "\n")
 	}
 	for _, networkName := range networkList {
 		switch networkName {

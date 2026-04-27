@@ -33,6 +33,7 @@ var (
 		string(bucketRuleSet),
 		string(bucketRDRC),
 		string(bucketDNSCache),
+		string(bucketTrafficStats),
 	}
 
 	cacheIDDefault = []byte("default")

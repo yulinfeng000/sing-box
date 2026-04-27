@@ -204,6 +204,92 @@ func (s *TrafficManager) ReadUsers(users []*UserObject, swap bool) {
 	}
 }
 
+func (s *TrafficManager) InitCounters(stats *adapter.TrafficStats) {
+	s.globalUplink.Add(stats.GlobalUplinkBytes)
+	s.globalDownlink.Add(stats.GlobalDownlinkBytes)
+	s.globalUplinkPackets.Add(stats.GlobalUplinkPackets)
+	s.globalDownlinkPackets.Add(stats.GlobalDownlinkPackets)
+	s.globalTCPSessions.Add(stats.GlobalTCPSessions)
+	s.globalUDPSessions.Add(stats.GlobalUDPSessions)
+
+	s.userAccess.Lock()
+	defer s.userAccess.Unlock()
+	for _, u := range stats.Users {
+		if u.UplinkBytes != 0 {
+			c := new(atomic.Int64)
+			c.Add(u.UplinkBytes)
+			s.userUplink[u.Name] = c
+		}
+		if u.DownlinkBytes != 0 {
+			c := new(atomic.Int64)
+			c.Add(u.DownlinkBytes)
+			s.userDownlink[u.Name] = c
+		}
+		if u.UplinkPackets != 0 {
+			c := new(atomic.Int64)
+			c.Add(u.UplinkPackets)
+			s.userUplinkPackets[u.Name] = c
+		}
+		if u.DownlinkPackets != 0 {
+			c := new(atomic.Int64)
+			c.Add(u.DownlinkPackets)
+			s.userDownlinkPackets[u.Name] = c
+		}
+		if u.TCPSessions != 0 {
+			c := new(atomic.Int64)
+			c.Add(u.TCPSessions)
+			s.userTCPSessions[u.Name] = c
+		}
+		if u.UDPSessions != 0 {
+			c := new(atomic.Int64)
+			c.Add(u.UDPSessions)
+			s.userUDPSessions[u.Name] = c
+		}
+	}
+}
+
+func LoadStats(tm *TrafficManager, cacheFile adapter.CacheFile, inboundTag string) error {
+	stats, err := cacheFile.LoadTrafficStats(inboundTag)
+	if err != nil || stats == nil {
+		return err
+	}
+	tm.InitCounters(stats)
+	return nil
+}
+
+func SaveStats(tm *TrafficManager, userNames []string, cacheFile adapter.CacheFile, inboundTag string) error {
+	globalUplink, globalDownlink, globalUplinkPackets, globalDownlinkPackets, globalTCPSessions, globalUDPSessions := tm.ReadGlobal(false)
+
+	users := make([]*UserObject, len(userNames))
+	for i, name := range userNames {
+		users[i] = &UserObject{UserName: name}
+	}
+	tm.ReadUsers(users, false)
+
+	userStats := make([]adapter.UserTrafficStats, len(users))
+	for i, u := range users {
+		userStats[i] = adapter.UserTrafficStats{
+			Name:            u.UserName,
+			UplinkBytes:     u.UplinkBytes,
+			DownlinkBytes:   u.DownlinkBytes,
+			UplinkPackets:   u.UplinkPackets,
+			DownlinkPackets: u.DownlinkPackets,
+			TCPSessions:     u.TCPSessions,
+			UDPSessions:     u.UDPSessions,
+		}
+	}
+
+	return cacheFile.SaveTrafficStats(inboundTag, &adapter.TrafficStats{
+		GlobalUplinkBytes:     globalUplink,
+		GlobalDownlinkBytes:   globalDownlink,
+		GlobalUplinkPackets:   globalUplinkPackets,
+		GlobalDownlinkPackets: globalDownlinkPackets,
+		GlobalTCPSessions:     globalTCPSessions,
+		GlobalUDPSessions:     globalUDPSessions,
+		Users:                 userStats,
+	})
+}
+
 func (s *TrafficManager) ReadGlobal(swap bool) (uplinkBytes int64, downlinkBytes int64, uplinkPackets int64, downlinkPackets int64, tcpSessions int64, udpSessions int64) {
 	if swap {
 		return s.globalUplink.Swap(0),

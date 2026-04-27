@@ -259,6 +259,7 @@ func (s *StartedService) CloseService() error {
 		return os.ErrInvalid
 	}
 	s.updateStatus(ServiceStatus_STOPPING)
+	s.saveAllStats()
 	instance := s.instance
 	s.instance = nil
 	if instance != nil {
@@ -1517,11 +1518,11 @@ func (s *StartedService) storeConfig(opts *option.Options) {
 // ensureUserManager returns a UserManager for the given inbound tag, creating one if needed.
 func (s *StartedService) ensureUserManager(inboundTag string) (*ssmapi.UserManager, error) {
 	s.userAccess.Lock()
-	defer s.userAccess.Unlock()
-
 	if um, exists := s.userManagers[inboundTag]; exists {
+		s.userAccess.Unlock()
 		return um, nil
 	}
+	s.userAccess.Unlock()
 
 	s.serviceAccess.RLock()
 	instance := s.instance
@@ -1544,7 +1545,26 @@ func (s *StartedService) ensureUserManager(inboundTag string) (*ssmapi.UserManag
 	traffic := ssmapi.NewTrafficManager()
 	managedServer.SetTracker(traffic)
 	um := ssmapi.NewUserManager(managedServer, traffic)
+
+	s.configAccess.Lock()
+	if opts, ok := s.inboundOptions[inboundTag]; ok && opts.Options != nil {
+		if users := ssmapi.ExtractUsersFromOptions(opts.Options); users != nil {
+			um.LoadUsers(users)
+		}
+	}
+	s.configAccess.Unlock()
+
+	if instance.cacheFile != nil {
+		_ = ssmapi.LoadStats(traffic, instance.cacheFile, inboundTag)
+	}
+
+	s.userAccess.Lock()
+	if existing, exists := s.userManagers[inboundTag]; exists {
+		s.userAccess.Unlock()
+		return existing, nil
+	}
 	s.userManagers[inboundTag] = um
+	s.userAccess.Unlock()
 	return um, nil
 }
 
@@ -1555,11 +1575,21 @@ func (s *StartedService) ListUsers(ctx context.Context, request *ListUsersReques
 		return nil, err
 	}
 	users := um.List()
+	um.TrafficManager().ReadUsers(users, false)
+
+	s.saveStatsForInbound(um, request.InboundTag)
+
 	protoUsers := make([]*UserInfo, 0, len(users))
 	for _, u := range users {
 		protoUsers = append(protoUsers, &UserInfo{
-			UserName: u.UserName,
-			Password: u.Password,
+			UserName:        u.UserName,
+			Password:        u.Password,
+			Uplink:          u.UplinkBytes,
+			Downlink:        u.DownlinkBytes,
+			UplinkPackets:   u.UplinkPackets,
+			DownlinkPackets: u.DownlinkPackets,
+			TcpSessions:     u.TCPSessions,
+			UdpSessions:     u.UDPSessions,
 		})
 	}
 	return &UserList{Users: protoUsers}, nil
@@ -1575,9 +1605,20 @@ func (s *StartedService) GetUser(ctx context.Context, request *GetUserRequest) (
 	if !found {
 		return nil, status.Error(codes.NotFound, "user not found: "+request.UserName)
 	}
+	u := &ssmapi.UserObject{UserName: request.UserName, Password: password}
+	um.TrafficManager().ReadUser(u)
+
+	s.saveStatsForInbound(um, request.InboundTag)
+
 	return &UserInfo{
-		UserName: request.UserName,
-		Password: password,
+		UserName:        u.UserName,
+		Password:        u.Password,
+		Uplink:          u.UplinkBytes,
+		Downlink:        u.DownlinkBytes,
+		UplinkPackets:   u.UplinkPackets,
+		DownlinkPackets: u.DownlinkPackets,
+		TcpSessions:     u.TCPSessions,
+		UdpSessions:     u.UDPSessions,
 	}, nil
 }
 
@@ -1626,6 +1667,42 @@ func (s *StartedService) DeleteUser(ctx context.Context, request *DeleteUserRequ
 		return nil, grpcErrorFromSSM(err)
 	}
 	return &emptypb.Empty{}, nil
+}
+
+// GetInboundStats returns global and per-user traffic statistics for an inbound.
+func (s *StartedService) GetInboundStats(ctx context.Context, request *GetInboundStatsRequest) (*InboundStats, error) {
+	um, err := s.ensureUserManager(request.InboundTag)
+	if err != nil {
+		return nil, err
+	}
+	uplinkBytes, downlinkBytes, uplinkPackets, downlinkPackets, tcpSessions, udpSessions :=
+		um.TrafficManager().ReadGlobal(request.Clear)
+	users := um.List()
+	um.TrafficManager().ReadUsers(users, request.Clear)
+
+	s.saveStatsForInbound(um, request.InboundTag)
+
+	protoUsers := make([]*UserInfo, 0, len(users))
+	for _, u := range users {
+		protoUsers = append(protoUsers, &UserInfo{
+			UserName:        u.UserName,
+			Uplink:          u.UplinkBytes,
+			Downlink:        u.DownlinkBytes,
+			UplinkPackets:   u.UplinkPackets,
+			DownlinkPackets: u.DownlinkPackets,
+			TcpSessions:     u.TCPSessions,
+			UdpSessions:     u.UDPSessions,
+		})
+	}
+	return &InboundStats{
+		UplinkBytes:     uplinkBytes,
+		DownlinkBytes:   downlinkBytes,
+		UplinkPackets:   uplinkPackets,
+		DownlinkPackets: downlinkPackets,
+		TcpSessions:     tcpSessions,
+		UdpSessions:     udpSessions,
+		Users:           protoUsers,
+	}, nil
 }
 
 // ListInbounds returns all currently running inbounds.
@@ -1770,6 +1847,40 @@ func grpcErrorFromSSM(err error) error {
 		return status.Error(codes.NotFound, err.Error())
 	}
 	return status.Error(codes.Internal, err.Error())
+}
+
+func (s *StartedService) saveStatsForInbound(um *ssmapi.UserManager, inboundTag string) {
+	s.serviceAccess.RLock()
+	cacheFile := s.instance.cacheFile
+	s.serviceAccess.RUnlock()
+	if cacheFile == nil || um == nil {
+		return
+	}
+	users := um.List()
+	userNames := make([]string, len(users))
+	for i, u := range users {
+		userNames[i] = u.UserName
+	}
+	_ = ssmapi.SaveStats(um.TrafficManager(), userNames, cacheFile, inboundTag)
+}
+
+func (s *StartedService) saveAllStats() {
+	s.serviceAccess.RLock()
+	cacheFile := s.instance.cacheFile
+	s.serviceAccess.RUnlock()
+	if cacheFile == nil {
+		return
+	}
+	s.userAccess.Lock()
+	defer s.userAccess.Unlock()
+	for tag, um := range s.userManagers {
+		users := um.List()
+		userNames := make([]string, len(users))
+		for i, u := range users {
+			userNames[i] = u.UserName
+		}
+		_ = ssmapi.SaveStats(um.TrafficManager(), userNames, cacheFile, tag)
+	}
 }
 
 func (s *StartedService) WriteMessage(level log.Level, message string) {

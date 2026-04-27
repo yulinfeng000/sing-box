@@ -48,6 +48,9 @@ service StartedService {
   rpc UpdateUser(UpdateUserRequest) returns (google.protobuf.Empty) {}
   rpc DeleteUser(DeleteUserRequest) returns (google.protobuf.Empty) {}
 
+  // Traffic statistics
+  rpc GetInboundStats(GetInboundStatsRequest) returns (InboundStats) {}
+
   // Inbound management
   rpc ListInbounds(google.protobuf.Empty) returns (InboundList) {}
   rpc AddInbound(AddInboundRequest) returns (google.protobuf.Empty) {}
@@ -382,6 +385,21 @@ message UserInfo {
 
 message UserList {
   repeated UserInfo users = 1;
+}
+
+message GetInboundStatsRequest {
+  string inbound_tag = 1;
+  bool clear = 2;
+}
+
+message InboundStats {
+  int64 uplink_bytes = 1;
+  int64 downlink_bytes = 2;
+  int64 uplink_packets = 3;
+  int64 downlink_packets = 4;
+  int64 tcp_sessions = 5;
+  int64 udp_sessions = 6;
+  repeated UserInfo users = 7;
 }
 
 // Inbound management messages

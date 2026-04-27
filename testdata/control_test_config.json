@@ -4,19 +4,28 @@
   },
   "inbounds": [
     {
-      "type": "mixed",
-      "tag": "mixed-in",
-      "listen": "127.0.0.1",
-      "listen_port": 2080
-    },
-    {
       "type": "shadowsocks",
       "tag": "ss-in",
-      "listen": "127.0.0.1",
-      "listen_port": 8388,
       "method": "2022-blake3-aes-128-gcm",
-      "password": "1yatHUqJ46fyc0UY46MpwQ==",
-      "managed": true
+      "password": "/cCGFuyCfXPWDs38YZizrw=="
+    },
+    {
+      "type": "shadowtls",
+      "tag": "sts-in",
+      "listen": "127.0.0.1",
+      "listen_port": 8555,
+      "detour": "ss-in",
+      "version": 3,
+      "users": [
+        {
+          "name": "tomcat",
+          "password": "FJWW9JZQcbR8Pp4nQPXmDg=="
+        }
+      ],
+      "handshake": {
+        "server": "aws.amazon.com",
+        "server_port": 443
+      }
     }
   ],
   "outbounds": [
