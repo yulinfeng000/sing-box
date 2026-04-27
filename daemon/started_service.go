@@ -9,21 +9,15 @@ import (
 	"strings"
 	"sync"
 	"time"
-	"unsafe"
 
 	"github.com/sagernet/sing-box/adapter"
-	"github.com/sagernet/sing-box/common/dialer"
-	"github.com/sagernet/sing-box/common/networkquality"
-	"github.com/sagernet/sing-box/common/stun"
 	"github.com/sagernet/sing-box/common/urltest"
-	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing-box/experimental/clashapi"
 	"github.com/sagernet/sing-box/experimental/clashapi/trafficontrol"
 	"github.com/sagernet/sing-box/experimental/deprecated"
 	"github.com/sagernet/sing-box/log"
 	"github.com/sagernet/sing-box/option"
 	"github.com/sagernet/sing-box/protocol/group"
-	"github.com/sagernet/sing-box/service/oomkiller"
 	"github.com/sagernet/sing-box/service/ssmapi"
 	"github.com/sagernet/sing/common"
 	"github.com/sagernet/sing/common/batch"
@@ -46,12 +40,10 @@ var _ StartedServiceServer = (*StartedService)(nil)
 type StartedService struct {
 	ctx context.Context
 	// platform adapter.PlatformInterface
-	handler           PlatformHandler
-	debug             bool
-	logMaxLines       int
-	oomKillerEnabled  bool
-	oomKillerDisabled bool
-	oomMemoryLimit    uint64
+	handler     PlatformHandler
+	debug       bool
+	logMaxLines int
+	oomKiller   bool
 	// workingDirectory string
 	// tempDirectory    string
 	// userID           int
@@ -90,12 +82,10 @@ type StartedService struct {
 type ServiceOptions struct {
 	Context context.Context
 	// Platform           adapter.PlatformInterface
-	Handler           PlatformHandler
-	Debug             bool
-	LogMaxLines       int
-	OOMKillerEnabled  bool
-	OOMKillerDisabled bool
-	OOMMemoryLimit    uint64
+	Handler     PlatformHandler
+	Debug       bool
+	LogMaxLines int
+	OOMKiller   bool
 	// WorkingDirectory   string
 	// TempDirectory      string
 	// UserID             int
@@ -108,18 +98,15 @@ func NewStartedService(options ServiceOptions) *StartedService {
 	s := &StartedService{
 		ctx: options.Context,
 		// platform:                options.Platform,
-		handler:           options.Handler,
-		debug:             options.Debug,
-		logMaxLines:       options.LogMaxLines,
-		oomKillerEnabled:  options.OOMKillerEnabled,
-		oomKillerDisabled: options.OOMKillerDisabled,
-		oomMemoryLimit:    options.OOMMemoryLimit,
+		handler:     options.Handler,
+		debug:       options.Debug,
+		logMaxLines: options.LogMaxLines,
+		oomKiller:   options.OOMKiller,
 		// workingDirectory: options.WorkingDirectory,
 		// tempDirectory:    options.TempDirectory,
 		// userID:           options.UserID,
 		// groupID:          options.GroupID,
 		// systemProxyEnabled:      options.SystemProxyEnabled,
-		configPath:                options.ConfigPath,
 		serviceStatus:             &ServiceStatus{Status: ServiceStatus_IDLE},
 		serviceStatusSubscriber:   observable.NewSubscriber[*ServiceStatus](4),
 		logSubscriber:             observable.NewSubscriber[*log.Entry](128),
@@ -127,6 +114,7 @@ func NewStartedService(options ServiceOptions) *StartedService {
 		urlTestHistoryStorage:     urltest.NewHistoryStorage(),
 		clashModeSubscriber:       observable.NewSubscriber[struct{}](1),
 		connectionEventSubscriber: observable.NewSubscriber[trafficontrol.ConnectionEvent](256),
+		configPath:                options.ConfigPath,
 		userManagers:              make(map[string]*ssmapi.UserManager),
 		inboundOptions:            make(map[string]*option.Inbound),
 	}
@@ -260,7 +248,6 @@ func (s *StartedService) CloseService() error {
 		return os.ErrInvalid
 	}
 	s.updateStatus(ServiceStatus_STOPPING)
-	s.saveAllStats()
 	instance := s.instance
 	s.instance = nil
 	if instance != nil {
@@ -272,17 +259,6 @@ func (s *StartedService) CloseService() error {
 	s.startedAt = time.Time{}
 	s.updateStatus(ServiceStatus_IDLE)
 	s.serviceAccess.Unlock()
-
-	// Clean up user managers
-	s.userAccess.Lock()
-	s.userManagers = make(map[string]*ssmapi.UserManager)
-	s.userAccess.Unlock()
-
-	// Clean up config
-	s.configAccess.Lock()
-	s.configOptions = nil
-	s.inboundOptions = make(map[string]*option.Inbound)
-	s.configAccess.Unlock()
 	runtime.GC()
 	return nil
 }
@@ -728,42 +704,7 @@ func (s *StartedService) SetSystemProxyEnabled(ctx context.Context, request *Set
 	if err != nil {
 		return nil, err
 	}
-	return &emptypb.Empty{}, nil
-}
-
-func (s *StartedService) TriggerDebugCrash(ctx context.Context, request *DebugCrashRequest) (*emptypb.Empty, error) {
-	if !s.debug {
-		return nil, status.Error(codes.PermissionDenied, "debug crash trigger unavailable")
-	}
-	if request == nil {
-		return nil, status.Error(codes.InvalidArgument, "missing debug crash request")
-	}
-	switch request.Type {
-	case DebugCrashRequest_GO:
-		time.AfterFunc(200*time.Millisecond, func() {
-			*(*int)(unsafe.Pointer(uintptr(0))) = 0
-		})
-	case DebugCrashRequest_NATIVE:
-		err := s.handler.TriggerNativeCrash()
-		if err != nil {
-			return nil, err
-		}
-	default:
-		return nil, status.Error(codes.InvalidArgument, "unknown debug crash type")
-	}
-	return &emptypb.Empty{}, nil
-}
-
-func (s *StartedService) TriggerOOMReport(ctx context.Context, _ *emptypb.Empty) (*emptypb.Empty, error) {
-	instance := s.Instance()
-	if instance == nil {
-		return nil, status.Error(codes.FailedPrecondition, "service not started")
-	}
-	reporter := service.FromContext[oomkiller.OOMReporter](instance.ctx)
-	if reporter == nil {
-		return nil, status.Error(codes.Unavailable, "OOM reporter not available")
-	}
-	return &emptypb.Empty{}, reporter.WriteReport(memory.Total())
+	return nil, err
 }
 
 func (s *StartedService) SubscribeConnections(request *SubscribeConnectionsRequest, server grpc.ServerStreamingServer[ConnectionEvents]) error {
@@ -1100,12 +1041,9 @@ func (s *StartedService) GetDeprecatedWarnings(ctx context.Context, empty *empty
 	return &DeprecatedWarnings{
 		Warnings: common.Map(notes, func(it deprecated.Note) *DeprecatedWarning {
 			return &DeprecatedWarning{
-				Message:           it.Message(),
-				Impending:         it.Impending(),
-				MigrationLink:     it.MigrationLink,
-				Description:       it.Description,
-				DeprecatedVersion: it.DeprecatedVersion,
-				ScheduledVersion:  it.ScheduledVersion,
+				Message:       it.Message(),
+				Impending:     it.Impending(),
+				MigrationLink: it.MigrationLink,
 			}
 		}),
 	}, nil
@@ -1117,390 +1055,29 @@ func (s *StartedService) GetStartedAt(ctx context.Context, empty *emptypb.Empty)
 	return &StartedAt{StartedAt: s.startedAt.UnixMilli()}, nil
 }
 
-func (s *StartedService) SubscribeOutbounds(_ *emptypb.Empty, server grpc.ServerStreamingServer[OutboundList]) error {
-	err := s.waitForStarted(server.Context())
-	if err != nil {
-		return err
-	}
-	subscription, done, err := s.urlTestObserver.Subscribe()
-	if err != nil {
-		return err
-	}
-	defer s.urlTestObserver.UnSubscribe(subscription)
-	for {
-		s.serviceAccess.RLock()
-		if s.serviceStatus.Status != ServiceStatus_STARTED {
-			s.serviceAccess.RUnlock()
-			return os.ErrInvalid
-		}
-		boxService := s.instance
-		s.serviceAccess.RUnlock()
-		historyStorage := boxService.urlTestHistoryStorage
-		var list OutboundList
-		for _, ob := range boxService.instance.Outbound().Outbounds() {
-			item := &GroupItem{
-				Tag:  ob.Tag(),
-				Type: ob.Type(),
-			}
-			if history := historyStorage.LoadURLTestHistory(adapter.OutboundTag(ob)); history != nil {
-				item.UrlTestTime = history.Time.Unix()
-				item.UrlTestDelay = int32(history.Delay)
-			}
-			list.Outbounds = append(list.Outbounds, item)
-		}
-		for _, ep := range boxService.instance.Endpoint().Endpoints() {
-			item := &GroupItem{
-				Tag:  ep.Tag(),
-				Type: ep.Type(),
-			}
-			if history := historyStorage.LoadURLTestHistory(adapter.OutboundTag(ep)); history != nil {
-				item.UrlTestTime = history.Time.Unix()
-				item.UrlTestDelay = int32(history.Delay)
-			}
-			list.Outbounds = append(list.Outbounds, item)
-		}
-		err = server.Send(&list)
-		if err != nil {
-			return err
-		}
-		select {
-		case <-subscription:
-		case <-s.ctx.Done():
-			return s.ctx.Err()
-		case <-server.Context().Done():
-			return server.Context().Err()
-		case <-done:
-			return nil
-		}
-	}
-}
-
-func resolveOutbound(instance *Instance, tag string) (adapter.Outbound, error) {
-	if tag == "" {
-		return instance.instance.Outbound().Default(), nil
-	}
-	outbound, loaded := instance.instance.Outbound().Outbound(tag)
-	if !loaded {
-		return nil, E.New("outbound not found: ", tag)
-	}
-	return outbound, nil
-}
-
-func (s *StartedService) StartNetworkQualityTest(
-	request *NetworkQualityTestRequest,
-	server grpc.ServerStreamingServer[NetworkQualityTestProgress],
-) error {
-	err := s.waitForStarted(server.Context())
-	if err != nil {
-		return err
-	}
-	s.serviceAccess.RLock()
-	boxService := s.instance
-	s.serviceAccess.RUnlock()
-
-	outbound, err := resolveOutbound(boxService, request.OutboundTag)
-	if err != nil {
-		return err
-	}
-
-	resolvedDialer := dialer.NewResolveDialer(boxService.ctx, outbound, true, "", adapter.DNSQueryOptions{}, 0)
-	httpClient := networkquality.NewHTTPClient(resolvedDialer)
-	defer httpClient.CloseIdleConnections()
-
-	measurementClientFactory, err := networkquality.NewOptionalHTTP3Factory(resolvedDialer, request.Http3)
-	if err != nil {
-		return err
-	}
-
-	result, nqErr := networkquality.Run(networkquality.Options{
-		ConfigURL:            request.ConfigURL,
-		HTTPClient:           httpClient,
-		NewMeasurementClient: measurementClientFactory,
-		Serial:               request.Serial,
-		MaxRuntime:           time.Duration(request.MaxRuntimeSeconds) * time.Second,
-		Context:              server.Context(),
-		OnProgress: func(p networkquality.Progress) {
-			_ = server.Send(&NetworkQualityTestProgress{
-				Phase:                    int32(p.Phase),
-				DownloadCapacity:         p.DownloadCapacity,
-				UploadCapacity:           p.UploadCapacity,
-				DownloadRPM:              p.DownloadRPM,
-				UploadRPM:                p.UploadRPM,
-				IdleLatencyMs:            p.IdleLatencyMs,
-				ElapsedMs:                p.ElapsedMs,
-				DownloadCapacityAccuracy: int32(p.DownloadCapacityAccuracy),
-				UploadCapacityAccuracy:   int32(p.UploadCapacityAccuracy),
-				DownloadRPMAccuracy:      int32(p.DownloadRPMAccuracy),
-				UploadRPMAccuracy:        int32(p.UploadRPMAccuracy),
-			})
-		},
-	})
-	if nqErr != nil {
-		return server.Send(&NetworkQualityTestProgress{
-			IsFinal: true,
-			Error:   nqErr.Error(),
-		})
-	}
-	return server.Send(&NetworkQualityTestProgress{
-		Phase:                    int32(networkquality.PhaseDone),
-		DownloadCapacity:         result.DownloadCapacity,
-		UploadCapacity:           result.UploadCapacity,
-		DownloadRPM:              result.DownloadRPM,
-		UploadRPM:                result.UploadRPM,
-		IdleLatencyMs:            result.IdleLatencyMs,
-		IsFinal:                  true,
-		DownloadCapacityAccuracy: int32(result.DownloadCapacityAccuracy),
-		UploadCapacityAccuracy:   int32(result.UploadCapacityAccuracy),
-		DownloadRPMAccuracy:      int32(result.DownloadRPMAccuracy),
-		UploadRPMAccuracy:        int32(result.UploadRPMAccuracy),
-	})
-}
-
-func (s *StartedService) StartSTUNTest(
-	request *STUNTestRequest,
-	server grpc.ServerStreamingServer[STUNTestProgress],
-) error {
-	err := s.waitForStarted(server.Context())
-	if err != nil {
-		return err
-	}
-	s.serviceAccess.RLock()
-	boxService := s.instance
-	s.serviceAccess.RUnlock()
-
-	outbound, err := resolveOutbound(boxService, request.OutboundTag)
-	if err != nil {
-		return err
-	}
-
-	resolvedDialer := dialer.NewResolveDialer(boxService.ctx, outbound, true, "", adapter.DNSQueryOptions{}, 0)
-
-	result, stunErr := stun.Run(stun.Options{
-		Server:  request.Server,
-		Dialer:  resolvedDialer,
-		Context: server.Context(),
-		OnProgress: func(p stun.Progress) {
-			_ = server.Send(&STUNTestProgress{
-				Phase:        int32(p.Phase),
-				ExternalAddr: p.ExternalAddr,
-				LatencyMs:    p.LatencyMs,
-				NatMapping:   int32(p.NATMapping),
-				NatFiltering: int32(p.NATFiltering),
-			})
-		},
-	})
-	if stunErr != nil {
-		return server.Send(&STUNTestProgress{
-			IsFinal: true,
-			Error:   stunErr.Error(),
-		})
-	}
-	return server.Send(&STUNTestProgress{
-		Phase:            int32(stun.PhaseDone),
-		ExternalAddr:     result.ExternalAddr,
-		LatencyMs:        result.LatencyMs,
-		NatMapping:       int32(result.NATMapping),
-		NatFiltering:     int32(result.NATFiltering),
-		IsFinal:          true,
-		NatTypeSupported: result.NATTypeSupported,
-	})
-}
-
-func (s *StartedService) SubscribeTailscaleStatus(
-	_ *emptypb.Empty,
-	server grpc.ServerStreamingServer[TailscaleStatusUpdate],
-) error {
-	err := s.waitForStarted(server.Context())
-	if err != nil {
-		return err
-	}
-	s.serviceAccess.RLock()
-	boxService := s.instance
-	s.serviceAccess.RUnlock()
-
-	endpointManager := service.FromContext[adapter.EndpointManager](boxService.ctx)
-	if endpointManager == nil {
-		return status.Error(codes.FailedPrecondition, "endpoint manager not available")
-	}
-
-	type tailscaleEndpoint struct {
-		tag      string
-		provider adapter.TailscaleEndpoint
-	}
-	var endpoints []tailscaleEndpoint
-	for _, endpoint := range endpointManager.Endpoints() {
-		if endpoint.Type() != C.TypeTailscale {
-			continue
-		}
-		provider, loaded := endpoint.(adapter.TailscaleEndpoint)
-		if !loaded {
-			continue
-		}
-		endpoints = append(endpoints, tailscaleEndpoint{
-			tag:      endpoint.Tag(),
-			provider: provider,
-		})
-	}
-	if len(endpoints) == 0 {
-		return status.Error(codes.NotFound, "no Tailscale endpoint found")
-	}
-
-	type taggedStatus struct {
-		tag    string
-		status *adapter.TailscaleEndpointStatus
-	}
-	updates := make(chan taggedStatus, len(endpoints))
-	ctx, cancel := context.WithCancel(server.Context())
-	defer cancel()
-
-	var waitGroup sync.WaitGroup
-	for _, endpoint := range endpoints {
-		waitGroup.Add(1)
-		go func(tag string, provider adapter.TailscaleEndpoint) {
-			defer waitGroup.Done()
-			_ = provider.SubscribeTailscaleStatus(ctx, func(endpointStatus *adapter.TailscaleEndpointStatus) {
-				select {
-				case updates <- taggedStatus{tag: tag, status: endpointStatus}:
-				case <-ctx.Done():
-				}
-			})
-		}(endpoint.tag, endpoint.provider)
-	}
-
-	go func() {
-		waitGroup.Wait()
-		close(updates)
-	}()
-
-	var tags []string
-	statuses := make(map[string]*adapter.TailscaleEndpointStatus, len(endpoints))
-	for update := range updates {
-		if _, exists := statuses[update.tag]; !exists {
-			tags = append(tags, update.tag)
-		}
-		statuses[update.tag] = update.status
-		protoEndpoints := make([]*TailscaleEndpointStatus, 0, len(statuses))
-		for _, tag := range tags {
-			protoEndpoints = append(protoEndpoints, tailscaleEndpointStatusToProto(tag, statuses[tag]))
-		}
-		sendErr := server.Send(&TailscaleStatusUpdate{
-			Endpoints: protoEndpoints,
-		})
-		if sendErr != nil {
-			return sendErr
-		}
-	}
-	return nil
-}
-
-func tailscaleEndpointStatusToProto(tag string, s *adapter.TailscaleEndpointStatus) *TailscaleEndpointStatus {
-	userGroups := make([]*TailscaleUserGroup, len(s.UserGroups))
-	for i, group := range s.UserGroups {
-		peers := make([]*TailscalePeer, len(group.Peers))
-		for j, peer := range group.Peers {
-			peers[j] = tailscalePeerToProto(peer)
-		}
-		userGroups[i] = &TailscaleUserGroup{
-			UserID:        group.UserID,
-			LoginName:     group.LoginName,
-			DisplayName:   group.DisplayName,
-			ProfilePicURL: group.ProfilePicURL,
-			Peers:         peers,
-		}
-	}
-	result := &TailscaleEndpointStatus{
-		EndpointTag:    tag,
-		BackendState:   s.BackendState,
-		AuthURL:        s.AuthURL,
-		NetworkName:    s.NetworkName,
-		MagicDNSSuffix: s.MagicDNSSuffix,
-		UserGroups:     userGroups,
-	}
-	if s.Self != nil {
-		result.Self = tailscalePeerToProto(s.Self)
-	}
-	return result
-}
-
-func tailscalePeerToProto(peer *adapter.TailscalePeer) *TailscalePeer {
-	return &TailscalePeer{
-		HostName:       peer.HostName,
-		DnsName:        peer.DNSName,
-		Os:             peer.OS,
-		TailscaleIPs:   peer.TailscaleIPs,
-		Online:         peer.Online,
-		ExitNode:       peer.ExitNode,
-		ExitNodeOption: peer.ExitNodeOption,
-		Active:         peer.Active,
-		RxBytes:        peer.RxBytes,
-		TxBytes:        peer.TxBytes,
-		KeyExpiry:      peer.KeyExpiry,
-	}
-}
-
-func (s *StartedService) StartTailscalePing(
-	request *TailscalePingRequest,
-	server grpc.ServerStreamingServer[TailscalePingResponse],
-) error {
-	err := s.waitForStarted(server.Context())
-	if err != nil {
-		return err
-	}
-	s.serviceAccess.RLock()
-	boxService := s.instance
-	s.serviceAccess.RUnlock()
-
-	endpointManager := service.FromContext[adapter.EndpointManager](boxService.ctx)
-	if endpointManager == nil {
-		return status.Error(codes.FailedPrecondition, "endpoint manager not available")
-	}
-
-	var provider adapter.TailscaleEndpoint
-	if request.EndpointTag != "" {
-		endpoint, loaded := endpointManager.Get(request.EndpointTag)
-		if !loaded {
-			return status.Error(codes.NotFound, "endpoint not found: "+request.EndpointTag)
-		}
-		if endpoint.Type() != C.TypeTailscale {
-			return status.Error(codes.InvalidArgument, "endpoint is not Tailscale: "+request.EndpointTag)
-		}
-		pingProvider, loaded := endpoint.(adapter.TailscaleEndpoint)
-		if !loaded {
-			return status.Error(codes.FailedPrecondition, "endpoint does not support ping")
-		}
-		provider = pingProvider
-	} else {
-		for _, endpoint := range endpointManager.Endpoints() {
-			if endpoint.Type() != C.TypeTailscale {
-				continue
-			}
-			pingProvider, loaded := endpoint.(adapter.TailscaleEndpoint)
-			if loaded {
-				provider = pingProvider
-				break
-			}
-		}
-		if provider == nil {
-			return status.Error(codes.NotFound, "no Tailscale endpoint found")
-		}
-	}
-
-	return provider.StartTailscalePing(server.Context(), request.PeerIP, func(result *adapter.TailscalePingResult) {
-		_ = server.Send(&TailscalePingResponse{
-			LatencyMs:      result.LatencyMs,
-			IsDirect:       result.IsDirect,
-			Endpoint:       result.Endpoint,
-			DerpRegionID:   result.DERPRegionID,
-			DerpRegionCode: result.DERPRegionCode,
-			Error:          result.Error,
-		})
-	})
-}
-
 func (s *StartedService) mustEmbedUnimplementedStartedServiceServer() {
 }
 
-// storeConfig saves the parsed config options for later persistence.
+func (s *StartedService) WriteMessage(level log.Level, message string) {
+	item := &log.Entry{Level: level, Message: message}
+	s.logAccess.Lock()
+	s.logLines.PushBack(item)
+	if s.logLines.Len() > s.logMaxLines {
+		s.logLines.Remove(s.logLines.Front())
+	}
+	s.logAccess.Unlock()
+	s.logSubscriber.Emit(item)
+	if s.debug {
+		s.handler.WriteDebugMessage(message)
+	}
+}
+
+func (s *StartedService) Instance() *Instance {
+	s.serviceAccess.RLock()
+	defer s.serviceAccess.RUnlock()
+	return s.instance
+}
+
 func (s *StartedService) storeConfig(opts *option.Options) {
 	s.configAccess.Lock()
 	defer s.configAccess.Unlock()
@@ -1516,7 +1093,6 @@ func (s *StartedService) storeConfig(opts *option.Options) {
 	}
 }
 
-// ensureUserManager returns a UserManager for the given inbound tag, creating one if needed.
 func (s *StartedService) ensureUserManager(inboundTag string) (*ssmapi.UserManager, error) {
 	s.userAccess.Lock()
 	if um, exists := s.userManagers[inboundTag]; exists {
@@ -1569,7 +1145,6 @@ func (s *StartedService) ensureUserManager(inboundTag string) (*ssmapi.UserManag
 	return um, nil
 }
 
-// ListUsers returns all users for the specified inbound.
 func (s *StartedService) ListUsers(ctx context.Context, request *ListUsersRequest) (*UserList, error) {
 	s.WriteMessage(log.LevelInfo, fmt.Sprintf("listing users for inbound %q", request.InboundTag))
 	um, err := s.ensureUserManager(request.InboundTag)
@@ -1597,7 +1172,6 @@ func (s *StartedService) ListUsers(ctx context.Context, request *ListUsersReques
 	return &UserList{Users: protoUsers}, nil
 }
 
-// GetUser returns a single user by name.
 func (s *StartedService) GetUser(ctx context.Context, request *GetUserRequest) (*UserInfo, error) {
 	s.WriteMessage(log.LevelInfo, fmt.Sprintf("getting user %q from inbound %q", request.UserName, request.InboundTag))
 	um, err := s.ensureUserManager(request.InboundTag)
@@ -1625,7 +1199,6 @@ func (s *StartedService) GetUser(ctx context.Context, request *GetUserRequest) (
 	}, nil
 }
 
-// AddUser creates a new user on the specified inbound.
 func (s *StartedService) AddUser(ctx context.Context, request *AddUserRequest) (*emptypb.Empty, error) {
 	s.WriteMessage(log.LevelInfo, fmt.Sprintf("adding user %q to inbound %q", request.UserName, request.InboundTag))
 	um, err := s.ensureUserManager(request.InboundTag)
@@ -1639,7 +1212,6 @@ func (s *StartedService) AddUser(ctx context.Context, request *AddUserRequest) (
 	return &emptypb.Empty{}, nil
 }
 
-// UpdateUser updates an existing user's password.
 func (s *StartedService) UpdateUser(ctx context.Context, request *UpdateUserRequest) (*emptypb.Empty, error) {
 	s.WriteMessage(log.LevelInfo, fmt.Sprintf("updating user %q on inbound %q", request.UserName, request.InboundTag))
 	um, err := s.ensureUserManager(request.InboundTag)
@@ -1657,7 +1229,6 @@ func (s *StartedService) UpdateUser(ctx context.Context, request *UpdateUserRequ
 	return &emptypb.Empty{}, nil
 }
 
-// DeleteUser removes a user from the specified inbound.
 func (s *StartedService) DeleteUser(ctx context.Context, request *DeleteUserRequest) (*emptypb.Empty, error) {
 	s.WriteMessage(log.LevelInfo, fmt.Sprintf("deleting user %q from inbound %q", request.UserName, request.InboundTag))
 	um, err := s.ensureUserManager(request.InboundTag)
@@ -1675,7 +1246,6 @@ func (s *StartedService) DeleteUser(ctx context.Context, request *DeleteUserRequ
 	return &emptypb.Empty{}, nil
 }
 
-// GetInboundStats returns global and per-user traffic statistics for an inbound.
 func (s *StartedService) GetInboundStats(ctx context.Context, request *GetInboundStatsRequest) (*InboundStats, error) {
 	um, err := s.ensureUserManager(request.InboundTag)
 	if err != nil {
@@ -1711,7 +1281,6 @@ func (s *StartedService) GetInboundStats(ctx context.Context, request *GetInboun
 	}, nil
 }
 
-// ListInbounds returns all currently running inbounds.
 func (s *StartedService) ListInbounds(ctx context.Context, _ *emptypb.Empty) (*InboundList, error) {
 	s.WriteMessage(log.LevelInfo, "listing inbounds")
 	s.serviceAccess.RLock()
@@ -1735,7 +1304,6 @@ func (s *StartedService) ListInbounds(ctx context.Context, _ *emptypb.Empty) (*I
 	return &InboundList{Inbounds: list}, nil
 }
 
-// AddInbound creates a new inbound at runtime and persists the config.
 func (s *StartedService) AddInbound(ctx context.Context, request *AddInboundRequest) (*emptypb.Empty, error) {
 	s.WriteMessage(log.LevelInfo, fmt.Sprintf("adding inbound %q of type %q", request.Tag, request.Type))
 	s.serviceAccess.RLock()
@@ -1772,7 +1340,6 @@ func (s *StartedService) AddInbound(ctx context.Context, request *AddInboundRequ
 	return &emptypb.Empty{}, nil
 }
 
-// RemoveInbound removes an inbound at runtime and persists the config.
 func (s *StartedService) RemoveInbound(ctx context.Context, request *RemoveInboundRequest) (*emptypb.Empty, error) {
 	s.WriteMessage(log.LevelInfo, fmt.Sprintf("removing inbound %q", request.Tag))
 	s.serviceAccess.RLock()
@@ -1801,7 +1368,6 @@ func (s *StartedService) RemoveInbound(ctx context.Context, request *RemoveInbou
 	return &emptypb.Empty{}, nil
 }
 
-// persistConfig serializes the current config and writes it to disk.
 func (s *StartedService) persistConfig() error {
 	s.configAccess.Lock()
 	configPath := s.configPath
@@ -1821,7 +1387,6 @@ func (s *StartedService) persistConfig() error {
 		return nil
 	}
 
-	// Rebuild inbound list from running inbounds
 	currentInbounds := instance.Box().Inbound().Inbounds()
 	newInboundOpts := make([]option.Inbound, 0, len(currentInbounds))
 	for _, inbound := range currentInbounds {
@@ -1873,6 +1438,34 @@ func (s *StartedService) saveStatsForInbound(um *ssmapi.UserManager, inboundTag 
 	_ = ssmapi.SaveStats(um.TrafficManager(), userNames, cacheFile, inboundTag)
 }
 
+func (s *StartedService) TriggerDebugCrash(ctx context.Context, _ *DebugCrashRequest) (*emptypb.Empty, error) {
+	return nil, status.Error(codes.Unimplemented, "not supported")
+}
+
+func (s *StartedService) TriggerOOMReport(ctx context.Context, _ *emptypb.Empty) (*emptypb.Empty, error) {
+	return nil, status.Error(codes.Unimplemented, "not supported")
+}
+
+func (s *StartedService) SubscribeOutbounds(_ *emptypb.Empty, _ grpc.ServerStreamingServer[OutboundList]) error {
+	return status.Error(codes.Unimplemented, "not supported")
+}
+
+func (s *StartedService) StartNetworkQualityTest(_ *NetworkQualityTestRequest, _ grpc.ServerStreamingServer[NetworkQualityTestProgress]) error {
+	return status.Error(codes.Unimplemented, "not supported")
+}
+
+func (s *StartedService) StartSTUNTest(_ *STUNTestRequest, _ grpc.ServerStreamingServer[STUNTestProgress]) error {
+	return status.Error(codes.Unimplemented, "not supported")
+}
+
+func (s *StartedService) SubscribeTailscaleStatus(_ *emptypb.Empty, _ grpc.ServerStreamingServer[TailscaleStatusUpdate]) error {
+	return status.Error(codes.Unimplemented, "not supported")
+}
+
+func (s *StartedService) StartTailscalePing(_ *TailscalePingRequest, _ grpc.ServerStreamingServer[TailscalePingResponse]) error {
+	return status.Error(codes.Unimplemented, "not supported")
+}
+
 func (s *StartedService) saveAllStats() {
 	s.serviceAccess.RLock()
 	cacheFile := s.instance.cacheFile
@@ -1890,24 +1483,4 @@ func (s *StartedService) saveAllStats() {
 		}
 		_ = ssmapi.SaveStats(um.TrafficManager(), userNames, cacheFile, tag)
 	}
-}
-
-func (s *StartedService) WriteMessage(level log.Level, message string) {
-	item := &log.Entry{Level: level, Message: message}
-	s.logAccess.Lock()
-	s.logLines.PushBack(item)
-	if s.logLines.Len() > s.logMaxLines {
-		s.logLines.Remove(s.logLines.Front())
-	}
-	s.logAccess.Unlock()
-	s.logSubscriber.Emit(item)
-	if s.debug {
-		s.handler.WriteDebugMessage(message)
-	}
-}
-
-func (s *StartedService) Instance() *Instance {
-	s.serviceAccess.RLock()
-	defer s.serviceAccess.RUnlock()
-	return s.instance
 }
