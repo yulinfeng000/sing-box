@@ -2,7 +2,6 @@ package daemon
 
 import (
 	context "context"
-
 	grpc "google.golang.org/grpc"
 	codes "google.golang.org/grpc/codes"
 	status "google.golang.org/grpc/status"
@@ -48,6 +47,7 @@ const (
 	StartedService_AddUser_FullMethodName                  = "/daemon.StartedService/AddUser"
 	StartedService_UpdateUser_FullMethodName               = "/daemon.StartedService/UpdateUser"
 	StartedService_DeleteUser_FullMethodName               = "/daemon.StartedService/DeleteUser"
+	StartedService_GetInboundStats_FullMethodName          = "/daemon.StartedService/GetInboundStats"
 	StartedService_ListInbounds_FullMethodName             = "/daemon.StartedService/ListInbounds"
 	StartedService_AddInbound_FullMethodName               = "/daemon.StartedService/AddInbound"
 	StartedService_RemoveInbound_FullMethodName            = "/daemon.StartedService/RemoveInbound"
@@ -91,6 +91,8 @@ type StartedServiceClient interface {
 	AddUser(ctx context.Context, in *AddUserRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	UpdateUser(ctx context.Context, in *UpdateUserRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	DeleteUser(ctx context.Context, in *DeleteUserRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	// Traffic statistics
+	GetInboundStats(ctx context.Context, in *GetInboundStatsRequest, opts ...grpc.CallOption) (*InboundStats, error)
 	// Inbound management
 	ListInbounds(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*InboundList, error)
 	AddInbound(ctx context.Context, in *AddInboundRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
@@ -534,6 +536,16 @@ func (c *startedServiceClient) DeleteUser(ctx context.Context, in *DeleteUserReq
 	return out, nil
 }
 
+func (c *startedServiceClient) GetInboundStats(ctx context.Context, in *GetInboundStatsRequest, opts ...grpc.CallOption) (*InboundStats, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(InboundStats)
+	err := c.cc.Invoke(ctx, StartedService_GetInboundStats_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *startedServiceClient) ListInbounds(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*InboundList, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(InboundList)
@@ -602,6 +614,8 @@ type StartedServiceServer interface {
 	AddUser(context.Context, *AddUserRequest) (*emptypb.Empty, error)
 	UpdateUser(context.Context, *UpdateUserRequest) (*emptypb.Empty, error)
 	DeleteUser(context.Context, *DeleteUserRequest) (*emptypb.Empty, error)
+	// Traffic statistics
+	GetInboundStats(context.Context, *GetInboundStatsRequest) (*InboundStats, error)
 	// Inbound management
 	ListInbounds(context.Context, *emptypb.Empty) (*InboundList, error)
 	AddInbound(context.Context, *AddInboundRequest) (*emptypb.Empty, error)
@@ -619,143 +633,111 @@ type UnimplementedStartedServiceServer struct{}
 func (UnimplementedStartedServiceServer) StopService(context.Context, *emptypb.Empty) (*emptypb.Empty, error) {
 	return nil, status.Error(codes.Unimplemented, "method StopService not implemented")
 }
-
 func (UnimplementedStartedServiceServer) ReloadService(context.Context, *emptypb.Empty) (*emptypb.Empty, error) {
 	return nil, status.Error(codes.Unimplemented, "method ReloadService not implemented")
 }
-
 func (UnimplementedStartedServiceServer) SubscribeServiceStatus(*emptypb.Empty, grpc.ServerStreamingServer[ServiceStatus]) error {
 	return status.Error(codes.Unimplemented, "method SubscribeServiceStatus not implemented")
 }
-
 func (UnimplementedStartedServiceServer) SubscribeLog(*emptypb.Empty, grpc.ServerStreamingServer[Log]) error {
 	return status.Error(codes.Unimplemented, "method SubscribeLog not implemented")
 }
-
 func (UnimplementedStartedServiceServer) GetDefaultLogLevel(context.Context, *emptypb.Empty) (*DefaultLogLevel, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetDefaultLogLevel not implemented")
 }
-
 func (UnimplementedStartedServiceServer) ClearLogs(context.Context, *emptypb.Empty) (*emptypb.Empty, error) {
 	return nil, status.Error(codes.Unimplemented, "method ClearLogs not implemented")
 }
-
 func (UnimplementedStartedServiceServer) SubscribeStatus(*SubscribeStatusRequest, grpc.ServerStreamingServer[Status]) error {
 	return status.Error(codes.Unimplemented, "method SubscribeStatus not implemented")
 }
-
 func (UnimplementedStartedServiceServer) SubscribeGroups(*emptypb.Empty, grpc.ServerStreamingServer[Groups]) error {
 	return status.Error(codes.Unimplemented, "method SubscribeGroups not implemented")
 }
-
 func (UnimplementedStartedServiceServer) GetClashModeStatus(context.Context, *emptypb.Empty) (*ClashModeStatus, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetClashModeStatus not implemented")
 }
-
 func (UnimplementedStartedServiceServer) SubscribeClashMode(*emptypb.Empty, grpc.ServerStreamingServer[ClashMode]) error {
 	return status.Error(codes.Unimplemented, "method SubscribeClashMode not implemented")
 }
-
 func (UnimplementedStartedServiceServer) SetClashMode(context.Context, *ClashMode) (*emptypb.Empty, error) {
 	return nil, status.Error(codes.Unimplemented, "method SetClashMode not implemented")
 }
-
 func (UnimplementedStartedServiceServer) URLTest(context.Context, *URLTestRequest) (*emptypb.Empty, error) {
 	return nil, status.Error(codes.Unimplemented, "method URLTest not implemented")
 }
-
 func (UnimplementedStartedServiceServer) SelectOutbound(context.Context, *SelectOutboundRequest) (*emptypb.Empty, error) {
 	return nil, status.Error(codes.Unimplemented, "method SelectOutbound not implemented")
 }
-
 func (UnimplementedStartedServiceServer) SetGroupExpand(context.Context, *SetGroupExpandRequest) (*emptypb.Empty, error) {
 	return nil, status.Error(codes.Unimplemented, "method SetGroupExpand not implemented")
 }
-
 func (UnimplementedStartedServiceServer) GetSystemProxyStatus(context.Context, *emptypb.Empty) (*SystemProxyStatus, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetSystemProxyStatus not implemented")
 }
-
 func (UnimplementedStartedServiceServer) SetSystemProxyEnabled(context.Context, *SetSystemProxyEnabledRequest) (*emptypb.Empty, error) {
 	return nil, status.Error(codes.Unimplemented, "method SetSystemProxyEnabled not implemented")
 }
-
 func (UnimplementedStartedServiceServer) TriggerDebugCrash(context.Context, *DebugCrashRequest) (*emptypb.Empty, error) {
 	return nil, status.Error(codes.Unimplemented, "method TriggerDebugCrash not implemented")
 }
-
 func (UnimplementedStartedServiceServer) TriggerOOMReport(context.Context, *emptypb.Empty) (*emptypb.Empty, error) {
 	return nil, status.Error(codes.Unimplemented, "method TriggerOOMReport not implemented")
 }
-
 func (UnimplementedStartedServiceServer) SubscribeConnections(*SubscribeConnectionsRequest, grpc.ServerStreamingServer[ConnectionEvents]) error {
 	return status.Error(codes.Unimplemented, "method SubscribeConnections not implemented")
 }
-
 func (UnimplementedStartedServiceServer) CloseConnection(context.Context, *CloseConnectionRequest) (*emptypb.Empty, error) {
 	return nil, status.Error(codes.Unimplemented, "method CloseConnection not implemented")
 }
-
 func (UnimplementedStartedServiceServer) CloseAllConnections(context.Context, *emptypb.Empty) (*emptypb.Empty, error) {
 	return nil, status.Error(codes.Unimplemented, "method CloseAllConnections not implemented")
 }
-
 func (UnimplementedStartedServiceServer) GetDeprecatedWarnings(context.Context, *emptypb.Empty) (*DeprecatedWarnings, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetDeprecatedWarnings not implemented")
 }
-
 func (UnimplementedStartedServiceServer) GetStartedAt(context.Context, *emptypb.Empty) (*StartedAt, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetStartedAt not implemented")
 }
-
 func (UnimplementedStartedServiceServer) SubscribeOutbounds(*emptypb.Empty, grpc.ServerStreamingServer[OutboundList]) error {
 	return status.Error(codes.Unimplemented, "method SubscribeOutbounds not implemented")
 }
-
 func (UnimplementedStartedServiceServer) StartNetworkQualityTest(*NetworkQualityTestRequest, grpc.ServerStreamingServer[NetworkQualityTestProgress]) error {
 	return status.Error(codes.Unimplemented, "method StartNetworkQualityTest not implemented")
 }
-
 func (UnimplementedStartedServiceServer) StartSTUNTest(*STUNTestRequest, grpc.ServerStreamingServer[STUNTestProgress]) error {
 	return status.Error(codes.Unimplemented, "method StartSTUNTest not implemented")
 }
-
 func (UnimplementedStartedServiceServer) SubscribeTailscaleStatus(*emptypb.Empty, grpc.ServerStreamingServer[TailscaleStatusUpdate]) error {
 	return status.Error(codes.Unimplemented, "method SubscribeTailscaleStatus not implemented")
 }
-
 func (UnimplementedStartedServiceServer) StartTailscalePing(*TailscalePingRequest, grpc.ServerStreamingServer[TailscalePingResponse]) error {
 	return status.Error(codes.Unimplemented, "method StartTailscalePing not implemented")
 }
-
 func (UnimplementedStartedServiceServer) ListUsers(context.Context, *ListUsersRequest) (*UserList, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListUsers not implemented")
 }
-
 func (UnimplementedStartedServiceServer) GetUser(context.Context, *GetUserRequest) (*UserInfo, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetUser not implemented")
 }
-
 func (UnimplementedStartedServiceServer) AddUser(context.Context, *AddUserRequest) (*emptypb.Empty, error) {
 	return nil, status.Error(codes.Unimplemented, "method AddUser not implemented")
 }
-
 func (UnimplementedStartedServiceServer) UpdateUser(context.Context, *UpdateUserRequest) (*emptypb.Empty, error) {
 	return nil, status.Error(codes.Unimplemented, "method UpdateUser not implemented")
 }
-
 func (UnimplementedStartedServiceServer) DeleteUser(context.Context, *DeleteUserRequest) (*emptypb.Empty, error) {
 	return nil, status.Error(codes.Unimplemented, "method DeleteUser not implemented")
 }
-
+func (UnimplementedStartedServiceServer) GetInboundStats(context.Context, *GetInboundStatsRequest) (*InboundStats, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetInboundStats not implemented")
+}
 func (UnimplementedStartedServiceServer) ListInbounds(context.Context, *emptypb.Empty) (*InboundList, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListInbounds not implemented")
 }
-
 func (UnimplementedStartedServiceServer) AddInbound(context.Context, *AddInboundRequest) (*emptypb.Empty, error) {
 	return nil, status.Error(codes.Unimplemented, "method AddInbound not implemented")
 }
-
 func (UnimplementedStartedServiceServer) RemoveInbound(context.Context, *RemoveInboundRequest) (*emptypb.Empty, error) {
 	return nil, status.Error(codes.Unimplemented, "method RemoveInbound not implemented")
 }
@@ -1297,6 +1279,24 @@ func _StartedService_DeleteUser_Handler(srv interface{}, ctx context.Context, de
 	return interceptor(ctx, in, info, handler)
 }
 
+func _StartedService_GetInboundStats_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetInboundStatsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(StartedServiceServer).GetInboundStats(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: StartedService_GetInboundStats_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(StartedServiceServer).GetInboundStats(ctx, req.(*GetInboundStatsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _StartedService_ListInbounds_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(emptypb.Empty)
 	if err := dec(in); err != nil {
@@ -1445,6 +1445,10 @@ var StartedService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "DeleteUser",
 			Handler:    _StartedService_DeleteUser_Handler,
+		},
+		{
+			MethodName: "GetInboundStats",
+			Handler:    _StartedService_GetInboundStats_Handler,
 		},
 		{
 			MethodName: "ListInbounds",

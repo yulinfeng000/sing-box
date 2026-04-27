@@ -1,13 +1,12 @@
 package daemon
 
 import (
-	reflect "reflect"
-	sync "sync"
-	unsafe "unsafe"
-
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	emptypb "google.golang.org/protobuf/types/known/emptypb"
+	reflect "reflect"
+	sync "sync"
+	unsafe "unsafe"
 )
 
 const (
@@ -3133,6 +3132,150 @@ func (x *UserList) GetUsers() []*UserInfo {
 	return nil
 }
 
+type GetInboundStatsRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	InboundTag    string                 `protobuf:"bytes,1,opt,name=inbound_tag,json=inboundTag,proto3" json:"inbound_tag,omitempty"`
+	Clear         bool                   `protobuf:"varint,2,opt,name=clear,proto3" json:"clear,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetInboundStatsRequest) Reset() {
+	*x = GetInboundStatsRequest{}
+	mi := &file_daemon_started_service_proto_msgTypes[44]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetInboundStatsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetInboundStatsRequest) ProtoMessage() {}
+
+func (x *GetInboundStatsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_daemon_started_service_proto_msgTypes[44]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetInboundStatsRequest.ProtoReflect.Descriptor instead.
+func (*GetInboundStatsRequest) Descriptor() ([]byte, []int) {
+	return file_daemon_started_service_proto_rawDescGZIP(), []int{44}
+}
+
+func (x *GetInboundStatsRequest) GetInboundTag() string {
+	if x != nil {
+		return x.InboundTag
+	}
+	return ""
+}
+
+func (x *GetInboundStatsRequest) GetClear() bool {
+	if x != nil {
+		return x.Clear
+	}
+	return false
+}
+
+type InboundStats struct {
+	state           protoimpl.MessageState `protogen:"open.v1"`
+	UplinkBytes     int64                  `protobuf:"varint,1,opt,name=uplink_bytes,json=uplinkBytes,proto3" json:"uplink_bytes,omitempty"`
+	DownlinkBytes   int64                  `protobuf:"varint,2,opt,name=downlink_bytes,json=downlinkBytes,proto3" json:"downlink_bytes,omitempty"`
+	UplinkPackets   int64                  `protobuf:"varint,3,opt,name=uplink_packets,json=uplinkPackets,proto3" json:"uplink_packets,omitempty"`
+	DownlinkPackets int64                  `protobuf:"varint,4,opt,name=downlink_packets,json=downlinkPackets,proto3" json:"downlink_packets,omitempty"`
+	TcpSessions     int64                  `protobuf:"varint,5,opt,name=tcp_sessions,json=tcpSessions,proto3" json:"tcp_sessions,omitempty"`
+	UdpSessions     int64                  `protobuf:"varint,6,opt,name=udp_sessions,json=udpSessions,proto3" json:"udp_sessions,omitempty"`
+	Users           []*UserInfo            `protobuf:"bytes,7,rep,name=users,proto3" json:"users,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
+}
+
+func (x *InboundStats) Reset() {
+	*x = InboundStats{}
+	mi := &file_daemon_started_service_proto_msgTypes[45]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *InboundStats) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*InboundStats) ProtoMessage() {}
+
+func (x *InboundStats) ProtoReflect() protoreflect.Message {
+	mi := &file_daemon_started_service_proto_msgTypes[45]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use InboundStats.ProtoReflect.Descriptor instead.
+func (*InboundStats) Descriptor() ([]byte, []int) {
+	return file_daemon_started_service_proto_rawDescGZIP(), []int{45}
+}
+
+func (x *InboundStats) GetUplinkBytes() int64 {
+	if x != nil {
+		return x.UplinkBytes
+	}
+	return 0
+}
+
+func (x *InboundStats) GetDownlinkBytes() int64 {
+	if x != nil {
+		return x.DownlinkBytes
+	}
+	return 0
+}
+
+func (x *InboundStats) GetUplinkPackets() int64 {
+	if x != nil {
+		return x.UplinkPackets
+	}
+	return 0
+}
+
+func (x *InboundStats) GetDownlinkPackets() int64 {
+	if x != nil {
+		return x.DownlinkPackets
+	}
+	return 0
+}
+
+func (x *InboundStats) GetTcpSessions() int64 {
+	if x != nil {
+		return x.TcpSessions
+	}
+	return 0
+}
+
+func (x *InboundStats) GetUdpSessions() int64 {
+	if x != nil {
+		return x.UdpSessions
+	}
+	return 0
+}
+
+func (x *InboundStats) GetUsers() []*UserInfo {
+	if x != nil {
+		return x.Users
+	}
+	return nil
+}
+
 // Inbound management messages
 type InboundInfo struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -3145,7 +3288,7 @@ type InboundInfo struct {
 
 func (x *InboundInfo) Reset() {
 	*x = InboundInfo{}
-	mi := &file_daemon_started_service_proto_msgTypes[44]
+	mi := &file_daemon_started_service_proto_msgTypes[46]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3157,7 +3300,7 @@ func (x *InboundInfo) String() string {
 func (*InboundInfo) ProtoMessage() {}
 
 func (x *InboundInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_daemon_started_service_proto_msgTypes[44]
+	mi := &file_daemon_started_service_proto_msgTypes[46]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3170,7 +3313,7 @@ func (x *InboundInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InboundInfo.ProtoReflect.Descriptor instead.
 func (*InboundInfo) Descriptor() ([]byte, []int) {
-	return file_daemon_started_service_proto_rawDescGZIP(), []int{44}
+	return file_daemon_started_service_proto_rawDescGZIP(), []int{46}
 }
 
 func (x *InboundInfo) GetTag() string {
@@ -3203,7 +3346,7 @@ type InboundList struct {
 
 func (x *InboundList) Reset() {
 	*x = InboundList{}
-	mi := &file_daemon_started_service_proto_msgTypes[45]
+	mi := &file_daemon_started_service_proto_msgTypes[47]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3215,7 +3358,7 @@ func (x *InboundList) String() string {
 func (*InboundList) ProtoMessage() {}
 
 func (x *InboundList) ProtoReflect() protoreflect.Message {
-	mi := &file_daemon_started_service_proto_msgTypes[45]
+	mi := &file_daemon_started_service_proto_msgTypes[47]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3228,7 +3371,7 @@ func (x *InboundList) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InboundList.ProtoReflect.Descriptor instead.
 func (*InboundList) Descriptor() ([]byte, []int) {
-	return file_daemon_started_service_proto_rawDescGZIP(), []int{45}
+	return file_daemon_started_service_proto_rawDescGZIP(), []int{47}
 }
 
 func (x *InboundList) GetInbounds() []*InboundInfo {
@@ -3249,7 +3392,7 @@ type AddInboundRequest struct {
 
 func (x *AddInboundRequest) Reset() {
 	*x = AddInboundRequest{}
-	mi := &file_daemon_started_service_proto_msgTypes[46]
+	mi := &file_daemon_started_service_proto_msgTypes[48]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3261,7 +3404,7 @@ func (x *AddInboundRequest) String() string {
 func (*AddInboundRequest) ProtoMessage() {}
 
 func (x *AddInboundRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_daemon_started_service_proto_msgTypes[46]
+	mi := &file_daemon_started_service_proto_msgTypes[48]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3274,7 +3417,7 @@ func (x *AddInboundRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AddInboundRequest.ProtoReflect.Descriptor instead.
 func (*AddInboundRequest) Descriptor() ([]byte, []int) {
-	return file_daemon_started_service_proto_rawDescGZIP(), []int{46}
+	return file_daemon_started_service_proto_rawDescGZIP(), []int{48}
 }
 
 func (x *AddInboundRequest) GetTag() string {
@@ -3307,7 +3450,7 @@ type RemoveInboundRequest struct {
 
 func (x *RemoveInboundRequest) Reset() {
 	*x = RemoveInboundRequest{}
-	mi := &file_daemon_started_service_proto_msgTypes[47]
+	mi := &file_daemon_started_service_proto_msgTypes[49]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3319,7 +3462,7 @@ func (x *RemoveInboundRequest) String() string {
 func (*RemoveInboundRequest) ProtoMessage() {}
 
 func (x *RemoveInboundRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_daemon_started_service_proto_msgTypes[47]
+	mi := &file_daemon_started_service_proto_msgTypes[49]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3332,7 +3475,7 @@ func (x *RemoveInboundRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RemoveInboundRequest.ProtoReflect.Descriptor instead.
 func (*RemoveInboundRequest) Descriptor() ([]byte, []int) {
-	return file_daemon_started_service_proto_rawDescGZIP(), []int{47}
+	return file_daemon_started_service_proto_rawDescGZIP(), []int{49}
 }
 
 func (x *RemoveInboundRequest) GetTag() string {
@@ -3352,7 +3495,7 @@ type Log_Message struct {
 
 func (x *Log_Message) Reset() {
 	*x = Log_Message{}
-	mi := &file_daemon_started_service_proto_msgTypes[48]
+	mi := &file_daemon_started_service_proto_msgTypes[50]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3364,7 +3507,7 @@ func (x *Log_Message) String() string {
 func (*Log_Message) ProtoMessage() {}
 
 func (x *Log_Message) ProtoReflect() protoreflect.Message {
-	mi := &file_daemon_started_service_proto_msgTypes[48]
+	mi := &file_daemon_started_service_proto_msgTypes[50]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3639,7 +3782,19 @@ const file_daemon_started_service_proto_rawDesc = "" +
 	"\ftcp_sessions\x18\a \x01(\x03R\vtcpSessions\x12!\n" +
 	"\fudp_sessions\x18\b \x01(\x03R\vudpSessions\"2\n" +
 	"\bUserList\x12&\n" +
-	"\x05users\x18\x01 \x03(\v2\x10.daemon.UserInfoR\x05users\"Y\n" +
+	"\x05users\x18\x01 \x03(\v2\x10.daemon.UserInfoR\x05users\"O\n" +
+	"\x16GetInboundStatsRequest\x12\x1f\n" +
+	"\vinbound_tag\x18\x01 \x01(\tR\n" +
+	"inboundTag\x12\x14\n" +
+	"\x05clear\x18\x02 \x01(\bR\x05clear\"\x98\x02\n" +
+	"\fInboundStats\x12!\n" +
+	"\fuplink_bytes\x18\x01 \x01(\x03R\vuplinkBytes\x12%\n" +
+	"\x0edownlink_bytes\x18\x02 \x01(\x03R\rdownlinkBytes\x12%\n" +
+	"\x0euplink_packets\x18\x03 \x01(\x03R\ruplinkPackets\x12)\n" +
+	"\x10downlink_packets\x18\x04 \x01(\x03R\x0fdownlinkPackets\x12!\n" +
+	"\ftcp_sessions\x18\x05 \x01(\x03R\vtcpSessions\x12!\n" +
+	"\fudp_sessions\x18\x06 \x01(\x03R\vudpSessions\x12&\n" +
+	"\x05users\x18\a \x03(\v2\x10.daemon.UserInfoR\x05users\"Y\n" +
 	"\vInboundInfo\x12\x10\n" +
 	"\x03tag\x18\x01 \x01(\tR\x03tag\x12\x12\n" +
 	"\x04type\x18\x02 \x01(\tR\x04type\x12$\n" +
@@ -3663,7 +3818,7 @@ const file_daemon_started_service_proto_rawDesc = "" +
 	"\x13ConnectionEventType\x12\x18\n" +
 	"\x14CONNECTION_EVENT_NEW\x10\x00\x12\x1b\n" +
 	"\x17CONNECTION_EVENT_UPDATE\x10\x01\x12\x1b\n" +
-	"\x17CONNECTION_EVENT_CLOSED\x10\x022\x99\x14\n" +
+	"\x17CONNECTION_EVENT_CLOSED\x10\x022\xe4\x14\n" +
 	"\x0eStartedService\x12=\n" +
 	"\vStopService\x12\x16.google.protobuf.Empty\x1a\x16.google.protobuf.Empty\x12?\n" +
 	"\rReloadService\x12\x16.google.protobuf.Empty\x1a\x16.google.protobuf.Empty\x12K\n" +
@@ -3699,7 +3854,8 @@ const file_daemon_started_service_proto_rawDesc = "" +
 	"\n" +
 	"UpdateUser\x12\x19.daemon.UpdateUserRequest\x1a\x16.google.protobuf.Empty\"\x00\x12A\n" +
 	"\n" +
-	"DeleteUser\x12\x19.daemon.DeleteUserRequest\x1a\x16.google.protobuf.Empty\"\x00\x12=\n" +
+	"DeleteUser\x12\x19.daemon.DeleteUserRequest\x1a\x16.google.protobuf.Empty\"\x00\x12I\n" +
+	"\x0fGetInboundStats\x12\x1e.daemon.GetInboundStatsRequest\x1a\x14.daemon.InboundStats\"\x00\x12=\n" +
 	"\fListInbounds\x12\x16.google.protobuf.Empty\x1a\x13.daemon.InboundList\"\x00\x12A\n" +
 	"\n" +
 	"AddInbound\x12\x19.daemon.AddInboundRequest\x1a\x16.google.protobuf.Empty\"\x00\x12G\n" +
@@ -3717,70 +3873,69 @@ func file_daemon_started_service_proto_rawDescGZIP() []byte {
 	return file_daemon_started_service_proto_rawDescData
 }
 
-var (
-	file_daemon_started_service_proto_enumTypes = make([]protoimpl.EnumInfo, 4)
-	file_daemon_started_service_proto_msgTypes  = make([]protoimpl.MessageInfo, 49)
-	file_daemon_started_service_proto_goTypes   = []any{
-		(LogLevel)(0),                        // 0: daemon.LogLevel
-		(ConnectionEventType)(0),             // 1: daemon.ConnectionEventType
-		(ServiceStatus_Type)(0),              // 2: daemon.ServiceStatus.Type
-		(DebugCrashRequest_Type)(0),          // 3: daemon.DebugCrashRequest.Type
-		(*ServiceStatus)(nil),                // 4: daemon.ServiceStatus
-		(*ReloadServiceRequest)(nil),         // 5: daemon.ReloadServiceRequest
-		(*SubscribeStatusRequest)(nil),       // 6: daemon.SubscribeStatusRequest
-		(*Log)(nil),                          // 7: daemon.Log
-		(*DefaultLogLevel)(nil),              // 8: daemon.DefaultLogLevel
-		(*Status)(nil),                       // 9: daemon.Status
-		(*Groups)(nil),                       // 10: daemon.Groups
-		(*Group)(nil),                        // 11: daemon.Group
-		(*GroupItem)(nil),                    // 12: daemon.GroupItem
-		(*URLTestRequest)(nil),               // 13: daemon.URLTestRequest
-		(*SelectOutboundRequest)(nil),        // 14: daemon.SelectOutboundRequest
-		(*SetGroupExpandRequest)(nil),        // 15: daemon.SetGroupExpandRequest
-		(*ClashMode)(nil),                    // 16: daemon.ClashMode
-		(*ClashModeStatus)(nil),              // 17: daemon.ClashModeStatus
-		(*SystemProxyStatus)(nil),            // 18: daemon.SystemProxyStatus
-		(*SetSystemProxyEnabledRequest)(nil), // 19: daemon.SetSystemProxyEnabledRequest
-		(*DebugCrashRequest)(nil),            // 20: daemon.DebugCrashRequest
-		(*SubscribeConnectionsRequest)(nil),  // 21: daemon.SubscribeConnectionsRequest
-		(*ConnectionEvent)(nil),              // 22: daemon.ConnectionEvent
-		(*ConnectionEvents)(nil),             // 23: daemon.ConnectionEvents
-		(*Connection)(nil),                   // 24: daemon.Connection
-		(*ProcessInfo)(nil),                  // 25: daemon.ProcessInfo
-		(*CloseConnectionRequest)(nil),       // 26: daemon.CloseConnectionRequest
-		(*DeprecatedWarnings)(nil),           // 27: daemon.DeprecatedWarnings
-		(*DeprecatedWarning)(nil),            // 28: daemon.DeprecatedWarning
-		(*StartedAt)(nil),                    // 29: daemon.StartedAt
-		(*OutboundList)(nil),                 // 30: daemon.OutboundList
-		(*NetworkQualityTestRequest)(nil),    // 31: daemon.NetworkQualityTestRequest
-		(*NetworkQualityTestProgress)(nil),   // 32: daemon.NetworkQualityTestProgress
-		(*STUNTestRequest)(nil),              // 33: daemon.STUNTestRequest
-		(*STUNTestProgress)(nil),             // 34: daemon.STUNTestProgress
-		(*TailscaleStatusUpdate)(nil),        // 35: daemon.TailscaleStatusUpdate
-		(*TailscaleEndpointStatus)(nil),      // 36: daemon.TailscaleEndpointStatus
-		(*TailscaleUserGroup)(nil),           // 37: daemon.TailscaleUserGroup
-		(*TailscalePeer)(nil),                // 38: daemon.TailscalePeer
-		(*TailscalePingRequest)(nil),         // 39: daemon.TailscalePingRequest
-		(*TailscalePingResponse)(nil),        // 40: daemon.TailscalePingResponse
-		(*ListUsersRequest)(nil),             // 41: daemon.ListUsersRequest
-		(*GetUserRequest)(nil),               // 42: daemon.GetUserRequest
-		(*AddUserRequest)(nil),               // 43: daemon.AddUserRequest
-		(*UpdateUserRequest)(nil),            // 44: daemon.UpdateUserRequest
-		(*DeleteUserRequest)(nil),            // 45: daemon.DeleteUserRequest
-		(*UserInfo)(nil),                     // 46: daemon.UserInfo
-		(*UserList)(nil),                     // 47: daemon.UserList
-		(*InboundInfo)(nil),                  // 48: daemon.InboundInfo
-		(*InboundList)(nil),                  // 49: daemon.InboundList
-		(*AddInboundRequest)(nil),            // 50: daemon.AddInboundRequest
-		(*RemoveInboundRequest)(nil),         // 51: daemon.RemoveInboundRequest
-		(*Log_Message)(nil),                  // 52: daemon.Log.Message
-		(*emptypb.Empty)(nil),                // 53: google.protobuf.Empty
-	}
-)
-
+var file_daemon_started_service_proto_enumTypes = make([]protoimpl.EnumInfo, 4)
+var file_daemon_started_service_proto_msgTypes = make([]protoimpl.MessageInfo, 51)
+var file_daemon_started_service_proto_goTypes = []any{
+	(LogLevel)(0),                        // 0: daemon.LogLevel
+	(ConnectionEventType)(0),             // 1: daemon.ConnectionEventType
+	(ServiceStatus_Type)(0),              // 2: daemon.ServiceStatus.Type
+	(DebugCrashRequest_Type)(0),          // 3: daemon.DebugCrashRequest.Type
+	(*ServiceStatus)(nil),                // 4: daemon.ServiceStatus
+	(*ReloadServiceRequest)(nil),         // 5: daemon.ReloadServiceRequest
+	(*SubscribeStatusRequest)(nil),       // 6: daemon.SubscribeStatusRequest
+	(*Log)(nil),                          // 7: daemon.Log
+	(*DefaultLogLevel)(nil),              // 8: daemon.DefaultLogLevel
+	(*Status)(nil),                       // 9: daemon.Status
+	(*Groups)(nil),                       // 10: daemon.Groups
+	(*Group)(nil),                        // 11: daemon.Group
+	(*GroupItem)(nil),                    // 12: daemon.GroupItem
+	(*URLTestRequest)(nil),               // 13: daemon.URLTestRequest
+	(*SelectOutboundRequest)(nil),        // 14: daemon.SelectOutboundRequest
+	(*SetGroupExpandRequest)(nil),        // 15: daemon.SetGroupExpandRequest
+	(*ClashMode)(nil),                    // 16: daemon.ClashMode
+	(*ClashModeStatus)(nil),              // 17: daemon.ClashModeStatus
+	(*SystemProxyStatus)(nil),            // 18: daemon.SystemProxyStatus
+	(*SetSystemProxyEnabledRequest)(nil), // 19: daemon.SetSystemProxyEnabledRequest
+	(*DebugCrashRequest)(nil),            // 20: daemon.DebugCrashRequest
+	(*SubscribeConnectionsRequest)(nil),  // 21: daemon.SubscribeConnectionsRequest
+	(*ConnectionEvent)(nil),              // 22: daemon.ConnectionEvent
+	(*ConnectionEvents)(nil),             // 23: daemon.ConnectionEvents
+	(*Connection)(nil),                   // 24: daemon.Connection
+	(*ProcessInfo)(nil),                  // 25: daemon.ProcessInfo
+	(*CloseConnectionRequest)(nil),       // 26: daemon.CloseConnectionRequest
+	(*DeprecatedWarnings)(nil),           // 27: daemon.DeprecatedWarnings
+	(*DeprecatedWarning)(nil),            // 28: daemon.DeprecatedWarning
+	(*StartedAt)(nil),                    // 29: daemon.StartedAt
+	(*OutboundList)(nil),                 // 30: daemon.OutboundList
+	(*NetworkQualityTestRequest)(nil),    // 31: daemon.NetworkQualityTestRequest
+	(*NetworkQualityTestProgress)(nil),   // 32: daemon.NetworkQualityTestProgress
+	(*STUNTestRequest)(nil),              // 33: daemon.STUNTestRequest
+	(*STUNTestProgress)(nil),             // 34: daemon.STUNTestProgress
+	(*TailscaleStatusUpdate)(nil),        // 35: daemon.TailscaleStatusUpdate
+	(*TailscaleEndpointStatus)(nil),      // 36: daemon.TailscaleEndpointStatus
+	(*TailscaleUserGroup)(nil),           // 37: daemon.TailscaleUserGroup
+	(*TailscalePeer)(nil),                // 38: daemon.TailscalePeer
+	(*TailscalePingRequest)(nil),         // 39: daemon.TailscalePingRequest
+	(*TailscalePingResponse)(nil),        // 40: daemon.TailscalePingResponse
+	(*ListUsersRequest)(nil),             // 41: daemon.ListUsersRequest
+	(*GetUserRequest)(nil),               // 42: daemon.GetUserRequest
+	(*AddUserRequest)(nil),               // 43: daemon.AddUserRequest
+	(*UpdateUserRequest)(nil),            // 44: daemon.UpdateUserRequest
+	(*DeleteUserRequest)(nil),            // 45: daemon.DeleteUserRequest
+	(*UserInfo)(nil),                     // 46: daemon.UserInfo
+	(*UserList)(nil),                     // 47: daemon.UserList
+	(*GetInboundStatsRequest)(nil),       // 48: daemon.GetInboundStatsRequest
+	(*InboundStats)(nil),                 // 49: daemon.InboundStats
+	(*InboundInfo)(nil),                  // 50: daemon.InboundInfo
+	(*InboundList)(nil),                  // 51: daemon.InboundList
+	(*AddInboundRequest)(nil),            // 52: daemon.AddInboundRequest
+	(*RemoveInboundRequest)(nil),         // 53: daemon.RemoveInboundRequest
+	(*Log_Message)(nil),                  // 54: daemon.Log.Message
+	(*emptypb.Empty)(nil),                // 55: google.protobuf.Empty
+}
 var file_daemon_started_service_proto_depIdxs = []int32{
 	2,  // 0: daemon.ServiceStatus.status:type_name -> daemon.ServiceStatus.Type
-	52, // 1: daemon.Log.messages:type_name -> daemon.Log.Message
+	54, // 1: daemon.Log.messages:type_name -> daemon.Log.Message
 	0,  // 2: daemon.DefaultLogLevel.level:type_name -> daemon.LogLevel
 	11, // 3: daemon.Groups.group:type_name -> daemon.Group
 	12, // 4: daemon.Group.items:type_name -> daemon.GroupItem
@@ -3796,85 +3951,88 @@ var file_daemon_started_service_proto_depIdxs = []int32{
 	37, // 14: daemon.TailscaleEndpointStatus.userGroups:type_name -> daemon.TailscaleUserGroup
 	38, // 15: daemon.TailscaleUserGroup.peers:type_name -> daemon.TailscalePeer
 	46, // 16: daemon.UserList.users:type_name -> daemon.UserInfo
-	48, // 17: daemon.InboundList.inbounds:type_name -> daemon.InboundInfo
-	0,  // 18: daemon.Log.Message.level:type_name -> daemon.LogLevel
-	53, // 19: daemon.StartedService.StopService:input_type -> google.protobuf.Empty
-	53, // 20: daemon.StartedService.ReloadService:input_type -> google.protobuf.Empty
-	53, // 21: daemon.StartedService.SubscribeServiceStatus:input_type -> google.protobuf.Empty
-	53, // 22: daemon.StartedService.SubscribeLog:input_type -> google.protobuf.Empty
-	53, // 23: daemon.StartedService.GetDefaultLogLevel:input_type -> google.protobuf.Empty
-	53, // 24: daemon.StartedService.ClearLogs:input_type -> google.protobuf.Empty
-	6,  // 25: daemon.StartedService.SubscribeStatus:input_type -> daemon.SubscribeStatusRequest
-	53, // 26: daemon.StartedService.SubscribeGroups:input_type -> google.protobuf.Empty
-	53, // 27: daemon.StartedService.GetClashModeStatus:input_type -> google.protobuf.Empty
-	53, // 28: daemon.StartedService.SubscribeClashMode:input_type -> google.protobuf.Empty
-	16, // 29: daemon.StartedService.SetClashMode:input_type -> daemon.ClashMode
-	13, // 30: daemon.StartedService.URLTest:input_type -> daemon.URLTestRequest
-	14, // 31: daemon.StartedService.SelectOutbound:input_type -> daemon.SelectOutboundRequest
-	15, // 32: daemon.StartedService.SetGroupExpand:input_type -> daemon.SetGroupExpandRequest
-	53, // 33: daemon.StartedService.GetSystemProxyStatus:input_type -> google.protobuf.Empty
-	19, // 34: daemon.StartedService.SetSystemProxyEnabled:input_type -> daemon.SetSystemProxyEnabledRequest
-	20, // 35: daemon.StartedService.TriggerDebugCrash:input_type -> daemon.DebugCrashRequest
-	53, // 36: daemon.StartedService.TriggerOOMReport:input_type -> google.protobuf.Empty
-	21, // 37: daemon.StartedService.SubscribeConnections:input_type -> daemon.SubscribeConnectionsRequest
-	26, // 38: daemon.StartedService.CloseConnection:input_type -> daemon.CloseConnectionRequest
-	53, // 39: daemon.StartedService.CloseAllConnections:input_type -> google.protobuf.Empty
-	53, // 40: daemon.StartedService.GetDeprecatedWarnings:input_type -> google.protobuf.Empty
-	53, // 41: daemon.StartedService.GetStartedAt:input_type -> google.protobuf.Empty
-	53, // 42: daemon.StartedService.SubscribeOutbounds:input_type -> google.protobuf.Empty
-	31, // 43: daemon.StartedService.StartNetworkQualityTest:input_type -> daemon.NetworkQualityTestRequest
-	33, // 44: daemon.StartedService.StartSTUNTest:input_type -> daemon.STUNTestRequest
-	53, // 45: daemon.StartedService.SubscribeTailscaleStatus:input_type -> google.protobuf.Empty
-	39, // 46: daemon.StartedService.StartTailscalePing:input_type -> daemon.TailscalePingRequest
-	41, // 47: daemon.StartedService.ListUsers:input_type -> daemon.ListUsersRequest
-	42, // 48: daemon.StartedService.GetUser:input_type -> daemon.GetUserRequest
-	43, // 49: daemon.StartedService.AddUser:input_type -> daemon.AddUserRequest
-	44, // 50: daemon.StartedService.UpdateUser:input_type -> daemon.UpdateUserRequest
-	45, // 51: daemon.StartedService.DeleteUser:input_type -> daemon.DeleteUserRequest
-	53, // 52: daemon.StartedService.ListInbounds:input_type -> google.protobuf.Empty
-	50, // 53: daemon.StartedService.AddInbound:input_type -> daemon.AddInboundRequest
-	51, // 54: daemon.StartedService.RemoveInbound:input_type -> daemon.RemoveInboundRequest
-	53, // 55: daemon.StartedService.StopService:output_type -> google.protobuf.Empty
-	53, // 56: daemon.StartedService.ReloadService:output_type -> google.protobuf.Empty
-	4,  // 57: daemon.StartedService.SubscribeServiceStatus:output_type -> daemon.ServiceStatus
-	7,  // 58: daemon.StartedService.SubscribeLog:output_type -> daemon.Log
-	8,  // 59: daemon.StartedService.GetDefaultLogLevel:output_type -> daemon.DefaultLogLevel
-	53, // 60: daemon.StartedService.ClearLogs:output_type -> google.protobuf.Empty
-	9,  // 61: daemon.StartedService.SubscribeStatus:output_type -> daemon.Status
-	10, // 62: daemon.StartedService.SubscribeGroups:output_type -> daemon.Groups
-	17, // 63: daemon.StartedService.GetClashModeStatus:output_type -> daemon.ClashModeStatus
-	16, // 64: daemon.StartedService.SubscribeClashMode:output_type -> daemon.ClashMode
-	53, // 65: daemon.StartedService.SetClashMode:output_type -> google.protobuf.Empty
-	53, // 66: daemon.StartedService.URLTest:output_type -> google.protobuf.Empty
-	53, // 67: daemon.StartedService.SelectOutbound:output_type -> google.protobuf.Empty
-	53, // 68: daemon.StartedService.SetGroupExpand:output_type -> google.protobuf.Empty
-	18, // 69: daemon.StartedService.GetSystemProxyStatus:output_type -> daemon.SystemProxyStatus
-	53, // 70: daemon.StartedService.SetSystemProxyEnabled:output_type -> google.protobuf.Empty
-	53, // 71: daemon.StartedService.TriggerDebugCrash:output_type -> google.protobuf.Empty
-	53, // 72: daemon.StartedService.TriggerOOMReport:output_type -> google.protobuf.Empty
-	23, // 73: daemon.StartedService.SubscribeConnections:output_type -> daemon.ConnectionEvents
-	53, // 74: daemon.StartedService.CloseConnection:output_type -> google.protobuf.Empty
-	53, // 75: daemon.StartedService.CloseAllConnections:output_type -> google.protobuf.Empty
-	27, // 76: daemon.StartedService.GetDeprecatedWarnings:output_type -> daemon.DeprecatedWarnings
-	29, // 77: daemon.StartedService.GetStartedAt:output_type -> daemon.StartedAt
-	30, // 78: daemon.StartedService.SubscribeOutbounds:output_type -> daemon.OutboundList
-	32, // 79: daemon.StartedService.StartNetworkQualityTest:output_type -> daemon.NetworkQualityTestProgress
-	34, // 80: daemon.StartedService.StartSTUNTest:output_type -> daemon.STUNTestProgress
-	35, // 81: daemon.StartedService.SubscribeTailscaleStatus:output_type -> daemon.TailscaleStatusUpdate
-	40, // 82: daemon.StartedService.StartTailscalePing:output_type -> daemon.TailscalePingResponse
-	47, // 83: daemon.StartedService.ListUsers:output_type -> daemon.UserList
-	46, // 84: daemon.StartedService.GetUser:output_type -> daemon.UserInfo
-	53, // 85: daemon.StartedService.AddUser:output_type -> google.protobuf.Empty
-	53, // 86: daemon.StartedService.UpdateUser:output_type -> google.protobuf.Empty
-	53, // 87: daemon.StartedService.DeleteUser:output_type -> google.protobuf.Empty
-	49, // 88: daemon.StartedService.ListInbounds:output_type -> daemon.InboundList
-	53, // 89: daemon.StartedService.AddInbound:output_type -> google.protobuf.Empty
-	53, // 90: daemon.StartedService.RemoveInbound:output_type -> google.protobuf.Empty
-	55, // [55:91] is the sub-list for method output_type
-	19, // [19:55] is the sub-list for method input_type
-	19, // [19:19] is the sub-list for extension type_name
-	19, // [19:19] is the sub-list for extension extendee
-	0,  // [0:19] is the sub-list for field type_name
+	46, // 17: daemon.InboundStats.users:type_name -> daemon.UserInfo
+	50, // 18: daemon.InboundList.inbounds:type_name -> daemon.InboundInfo
+	0,  // 19: daemon.Log.Message.level:type_name -> daemon.LogLevel
+	55, // 20: daemon.StartedService.StopService:input_type -> google.protobuf.Empty
+	55, // 21: daemon.StartedService.ReloadService:input_type -> google.protobuf.Empty
+	55, // 22: daemon.StartedService.SubscribeServiceStatus:input_type -> google.protobuf.Empty
+	55, // 23: daemon.StartedService.SubscribeLog:input_type -> google.protobuf.Empty
+	55, // 24: daemon.StartedService.GetDefaultLogLevel:input_type -> google.protobuf.Empty
+	55, // 25: daemon.StartedService.ClearLogs:input_type -> google.protobuf.Empty
+	6,  // 26: daemon.StartedService.SubscribeStatus:input_type -> daemon.SubscribeStatusRequest
+	55, // 27: daemon.StartedService.SubscribeGroups:input_type -> google.protobuf.Empty
+	55, // 28: daemon.StartedService.GetClashModeStatus:input_type -> google.protobuf.Empty
+	55, // 29: daemon.StartedService.SubscribeClashMode:input_type -> google.protobuf.Empty
+	16, // 30: daemon.StartedService.SetClashMode:input_type -> daemon.ClashMode
+	13, // 31: daemon.StartedService.URLTest:input_type -> daemon.URLTestRequest
+	14, // 32: daemon.StartedService.SelectOutbound:input_type -> daemon.SelectOutboundRequest
+	15, // 33: daemon.StartedService.SetGroupExpand:input_type -> daemon.SetGroupExpandRequest
+	55, // 34: daemon.StartedService.GetSystemProxyStatus:input_type -> google.protobuf.Empty
+	19, // 35: daemon.StartedService.SetSystemProxyEnabled:input_type -> daemon.SetSystemProxyEnabledRequest
+	20, // 36: daemon.StartedService.TriggerDebugCrash:input_type -> daemon.DebugCrashRequest
+	55, // 37: daemon.StartedService.TriggerOOMReport:input_type -> google.protobuf.Empty
+	21, // 38: daemon.StartedService.SubscribeConnections:input_type -> daemon.SubscribeConnectionsRequest
+	26, // 39: daemon.StartedService.CloseConnection:input_type -> daemon.CloseConnectionRequest
+	55, // 40: daemon.StartedService.CloseAllConnections:input_type -> google.protobuf.Empty
+	55, // 41: daemon.StartedService.GetDeprecatedWarnings:input_type -> google.protobuf.Empty
+	55, // 42: daemon.StartedService.GetStartedAt:input_type -> google.protobuf.Empty
+	55, // 43: daemon.StartedService.SubscribeOutbounds:input_type -> google.protobuf.Empty
+	31, // 44: daemon.StartedService.StartNetworkQualityTest:input_type -> daemon.NetworkQualityTestRequest
+	33, // 45: daemon.StartedService.StartSTUNTest:input_type -> daemon.STUNTestRequest
+	55, // 46: daemon.StartedService.SubscribeTailscaleStatus:input_type -> google.protobuf.Empty
+	39, // 47: daemon.StartedService.StartTailscalePing:input_type -> daemon.TailscalePingRequest
+	41, // 48: daemon.StartedService.ListUsers:input_type -> daemon.ListUsersRequest
+	42, // 49: daemon.StartedService.GetUser:input_type -> daemon.GetUserRequest
+	43, // 50: daemon.StartedService.AddUser:input_type -> daemon.AddUserRequest
+	44, // 51: daemon.StartedService.UpdateUser:input_type -> daemon.UpdateUserRequest
+	45, // 52: daemon.StartedService.DeleteUser:input_type -> daemon.DeleteUserRequest
+	48, // 53: daemon.StartedService.GetInboundStats:input_type -> daemon.GetInboundStatsRequest
+	55, // 54: daemon.StartedService.ListInbounds:input_type -> google.protobuf.Empty
+	52, // 55: daemon.StartedService.AddInbound:input_type -> daemon.AddInboundRequest
+	53, // 56: daemon.StartedService.RemoveInbound:input_type -> daemon.RemoveInboundRequest
+	55, // 57: daemon.StartedService.StopService:output_type -> google.protobuf.Empty
+	55, // 58: daemon.StartedService.ReloadService:output_type -> google.protobuf.Empty
+	4,  // 59: daemon.StartedService.SubscribeServiceStatus:output_type -> daemon.ServiceStatus
+	7,  // 60: daemon.StartedService.SubscribeLog:output_type -> daemon.Log
+	8,  // 61: daemon.StartedService.GetDefaultLogLevel:output_type -> daemon.DefaultLogLevel
+	55, // 62: daemon.StartedService.ClearLogs:output_type -> google.protobuf.Empty
+	9,  // 63: daemon.StartedService.SubscribeStatus:output_type -> daemon.Status
+	10, // 64: daemon.StartedService.SubscribeGroups:output_type -> daemon.Groups
+	17, // 65: daemon.StartedService.GetClashModeStatus:output_type -> daemon.ClashModeStatus
+	16, // 66: daemon.StartedService.SubscribeClashMode:output_type -> daemon.ClashMode
+	55, // 67: daemon.StartedService.SetClashMode:output_type -> google.protobuf.Empty
+	55, // 68: daemon.StartedService.URLTest:output_type -> google.protobuf.Empty
+	55, // 69: daemon.StartedService.SelectOutbound:output_type -> google.protobuf.Empty
+	55, // 70: daemon.StartedService.SetGroupExpand:output_type -> google.protobuf.Empty
+	18, // 71: daemon.StartedService.GetSystemProxyStatus:output_type -> daemon.SystemProxyStatus
+	55, // 72: daemon.StartedService.SetSystemProxyEnabled:output_type -> google.protobuf.Empty
+	55, // 73: daemon.StartedService.TriggerDebugCrash:output_type -> google.protobuf.Empty
+	55, // 74: daemon.StartedService.TriggerOOMReport:output_type -> google.protobuf.Empty
+	23, // 75: daemon.StartedService.SubscribeConnections:output_type -> daemon.ConnectionEvents
+	55, // 76: daemon.StartedService.CloseConnection:output_type -> google.protobuf.Empty
+	55, // 77: daemon.StartedService.CloseAllConnections:output_type -> google.protobuf.Empty
+	27, // 78: daemon.StartedService.GetDeprecatedWarnings:output_type -> daemon.DeprecatedWarnings
+	29, // 79: daemon.StartedService.GetStartedAt:output_type -> daemon.StartedAt
+	30, // 80: daemon.StartedService.SubscribeOutbounds:output_type -> daemon.OutboundList
+	32, // 81: daemon.StartedService.StartNetworkQualityTest:output_type -> daemon.NetworkQualityTestProgress
+	34, // 82: daemon.StartedService.StartSTUNTest:output_type -> daemon.STUNTestProgress
+	35, // 83: daemon.StartedService.SubscribeTailscaleStatus:output_type -> daemon.TailscaleStatusUpdate
+	40, // 84: daemon.StartedService.StartTailscalePing:output_type -> daemon.TailscalePingResponse
+	47, // 85: daemon.StartedService.ListUsers:output_type -> daemon.UserList
+	46, // 86: daemon.StartedService.GetUser:output_type -> daemon.UserInfo
+	55, // 87: daemon.StartedService.AddUser:output_type -> google.protobuf.Empty
+	55, // 88: daemon.StartedService.UpdateUser:output_type -> google.protobuf.Empty
+	55, // 89: daemon.StartedService.DeleteUser:output_type -> google.protobuf.Empty
+	49, // 90: daemon.StartedService.GetInboundStats:output_type -> daemon.InboundStats
+	51, // 91: daemon.StartedService.ListInbounds:output_type -> daemon.InboundList
+	55, // 92: daemon.StartedService.AddInbound:output_type -> google.protobuf.Empty
+	55, // 93: daemon.StartedService.RemoveInbound:output_type -> google.protobuf.Empty
+	57, // [57:94] is the sub-list for method output_type
+	20, // [20:57] is the sub-list for method input_type
+	20, // [20:20] is the sub-list for extension type_name
+	20, // [20:20] is the sub-list for extension extendee
+	0,  // [0:20] is the sub-list for field type_name
 }
 
 func init() { file_daemon_started_service_proto_init() }
@@ -3888,7 +4046,7 @@ func file_daemon_started_service_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_daemon_started_service_proto_rawDesc), len(file_daemon_started_service_proto_rawDesc)),
 			NumEnums:      4,
-			NumMessages:   49,
+			NumMessages:   51,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

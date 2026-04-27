@@ -38,6 +38,26 @@ type V2RayServer interface {
 	StatsService() ConnectionTracker
 }
 
+type UserTrafficStats struct {
+	Name            string
+	UplinkBytes     int64
+	DownlinkBytes   int64
+	UplinkPackets   int64
+	DownlinkPackets int64
+	TCPSessions     int64
+	UDPSessions     int64
+}
+
+type TrafficStats struct {
+	GlobalUplinkBytes     int64
+	GlobalDownlinkBytes   int64
+	GlobalUplinkPackets   int64
+	GlobalDownlinkPackets int64
+	GlobalTCPSessions     int64
+	GlobalUDPSessions     int64
+	Users                 []UserTrafficStats
+}
+
 type CacheFile interface {
 	LifecycleService
 
@@ -55,6 +75,8 @@ type CacheFile interface {
 	StoreGroupExpand(group string, expand bool) error
 	LoadRuleSet(tag string) *SavedBinary
 	SaveRuleSet(tag string, set *SavedBinary) error
+	LoadTrafficStats(inboundTag string) (*TrafficStats, error)
+	SaveTrafficStats(inboundTag string, stats *TrafficStats) error
 }
 
 type SavedBinary struct {

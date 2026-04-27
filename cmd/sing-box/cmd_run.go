@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"io"
 	"net"
@@ -24,6 +25,7 @@ import (
 	E "github.com/sagernet/sing/common/exceptions"
 	"github.com/sagernet/sing/common/json"
 	"github.com/sagernet/sing/common/json/badjson"
+	"github.com/sagernet/sing/service"
 
 	"github.com/spf13/cobra"
 	"google.golang.org/grpc"
@@ -57,16 +59,23 @@ func init() {
 type cliControlServer struct {
 	daemon.UnimplementedStartedServiceServer
 	box          *box.Box
+	cacheFile    adapter.CacheFile
 	userAccess   sync.Mutex
 	userManagers map[string]*ssmapi.UserManager
 	configPath   string
+
+	// Config persistence
+	configAccess   sync.Mutex
+	configOptions  *option.Options
+	inboundOptions map[string]*option.Inbound
 }
 
 func newCLIControlServer(box *box.Box, configPath string) *cliControlServer {
 	return &cliControlServer{
-		box:          box,
-		userManagers: make(map[string]*ssmapi.UserManager),
-		configPath:   configPath,
+		box:            box,
+		userManagers:   make(map[string]*ssmapi.UserManager),
+		configPath:     configPath,
+		inboundOptions: make(map[string]*option.Inbound),
 	}
 }
 
@@ -74,13 +83,89 @@ func (s *cliControlServer) setBox(box *box.Box) {
 	s.box = box
 }
 
-func (s *cliControlServer) ensureUserManager(inboundTag string) (*ssmapi.UserManager, error) {
+func (s *cliControlServer) setCacheFile(cacheFile adapter.CacheFile) {
+	s.cacheFile = cacheFile
+}
+
+func (s *cliControlServer) saveAllStats() {
 	s.userAccess.Lock()
 	defer s.userAccess.Unlock()
+	if s.cacheFile == nil {
+		return
+	}
+	for tag, um := range s.userManagers {
+		users := um.List()
+		userNames := make([]string, len(users))
+		for i, u := range users {
+			userNames[i] = u.UserName
+		}
+		_ = ssmapi.SaveStats(um.TrafficManager(), userNames, s.cacheFile, tag)
+	}
+}
 
+func (s *cliControlServer) storeConfig(opts *option.Options) {
+	s.configAccess.Lock()
+	defer s.configAccess.Unlock()
+
+	s.configOptions = opts
+	s.inboundOptions = make(map[string]*option.Inbound, len(opts.Inbounds))
+	for i := range opts.Inbounds {
+		tag := opts.Inbounds[i].Tag
+		if tag == "" {
+			continue
+		}
+		s.inboundOptions[tag] = &opts.Inbounds[i]
+	}
+}
+
+func (s *cliControlServer) persistConfig() error {
+	s.configAccess.Lock()
+	configPath := s.configPath
+	configOpts := s.configOptions
+	inboundOpts := s.inboundOptions
+	s.configAccess.Unlock()
+
+	if configPath == "" || configOpts == nil {
+		return nil
+	}
+
+	if s.box == nil {
+		return nil
+	}
+
+	currentInbounds := s.box.Inbound().Inbounds()
+	newInboundOpts := make([]option.Inbound, 0, len(currentInbounds))
+	for _, inbound := range currentInbounds {
+		tag := inbound.Tag()
+		if existing, ok := inboundOpts[tag]; ok {
+			newInboundOpts = append(newInboundOpts, *existing)
+		} else {
+			newInboundOpts = append(newInboundOpts, option.Inbound{
+				Type: inbound.Type(),
+				Tag:  tag,
+			})
+		}
+	}
+	configOpts.Inbounds = newInboundOpts
+
+	var buffer bytes.Buffer
+	encoder := json.NewEncoder(&buffer)
+	encoder.SetIndent("", "  ")
+	err := encoder.Encode(configOpts)
+	if err != nil {
+		return err
+	}
+
+	return os.WriteFile(configPath, buffer.Bytes(), 0o644)
+}
+
+func (s *cliControlServer) ensureUserManager(inboundTag string) (*ssmapi.UserManager, error) {
+	s.userAccess.Lock()
 	if um, exists := s.userManagers[inboundTag]; exists {
+		s.userAccess.Unlock()
 		return um, nil
 	}
+	s.userAccess.Unlock()
 
 	if s.box == nil {
 		return nil, os.ErrInvalid
@@ -99,7 +184,26 @@ func (s *cliControlServer) ensureUserManager(inboundTag string) (*ssmapi.UserMan
 	traffic := ssmapi.NewTrafficManager()
 	managedServer.SetTracker(traffic)
 	um := ssmapi.NewUserManager(managedServer, traffic)
+
+	s.configAccess.Lock()
+	if opts, ok := s.inboundOptions[inboundTag]; ok && opts.Options != nil {
+		if users := ssmapi.ExtractUsersFromOptions(opts.Options); users != nil {
+			um.LoadUsers(users)
+		}
+	}
+	s.configAccess.Unlock()
+
+	if s.cacheFile != nil {
+		_ = ssmapi.LoadStats(traffic, s.cacheFile, inboundTag)
+	}
+
+	s.userAccess.Lock()
+	if existing, exists := s.userManagers[inboundTag]; exists {
+		s.userAccess.Unlock()
+		return existing, nil
+	}
 	s.userManagers[inboundTag] = um
+	s.userAccess.Unlock()
 	return um, nil
 }
 
@@ -178,6 +282,47 @@ func (s *cliControlServer) DeleteUser(ctx context.Context, request *daemon.Delet
 	return &emptypb.Empty{}, nil
 }
 
+func (s *cliControlServer) GetInboundStats(ctx context.Context, request *daemon.GetInboundStatsRequest) (*daemon.InboundStats, error) {
+	um, err := s.ensureUserManager(request.InboundTag)
+	if err != nil {
+		return nil, err
+	}
+	uplinkBytes, downlinkBytes, uplinkPackets, downlinkPackets, tcpSessions, udpSessions :=
+		um.TrafficManager().ReadGlobal(request.Clear)
+	users := um.List()
+	um.TrafficManager().ReadUsers(users, request.Clear)
+
+	if s.cacheFile != nil {
+		userNames := make([]string, len(users))
+		for i, u := range users {
+			userNames[i] = u.UserName
+		}
+		_ = ssmapi.SaveStats(um.TrafficManager(), userNames, s.cacheFile, request.InboundTag)
+	}
+
+	protoUsers := make([]*daemon.UserInfo, 0, len(users))
+	for _, u := range users {
+		protoUsers = append(protoUsers, &daemon.UserInfo{
+			UserName:        u.UserName,
+			Uplink:          u.UplinkBytes,
+			Downlink:        u.DownlinkBytes,
+			UplinkPackets:   u.UplinkPackets,
+			DownlinkPackets: u.DownlinkPackets,
+			TcpSessions:     u.TCPSessions,
+			UdpSessions:     u.UDPSessions,
+		})
+	}
+	return &daemon.InboundStats{
+		UplinkBytes:     uplinkBytes,
+		DownlinkBytes:   downlinkBytes,
+		UplinkPackets:   uplinkPackets,
+		DownlinkPackets: downlinkPackets,
+		TcpSessions:     tcpSessions,
+		UdpSessions:     udpSessions,
+		Users:           protoUsers,
+	}, nil
+}
+
 func (s *cliControlServer) ListInbounds(ctx context.Context, _ *emptypb.Empty) (*daemon.InboundList, error) {
 	if s.box == nil {
 		return &daemon.InboundList{}, nil
@@ -214,6 +359,20 @@ func (s *cliControlServer) AddInbound(ctx context.Context, request *daemon.AddIn
 		return nil, status.Errorf(codes.Internal, "create inbound: %v", err)
 	}
 
+	// Store full inbound option for persistence
+	inboundOption.Tag = request.Tag
+	s.configAccess.Lock()
+	if s.inboundOptions != nil {
+		cloned := inboundOption
+		s.inboundOptions[request.Tag] = &cloned
+	}
+	s.configAccess.Unlock()
+
+	err = s.persistConfig()
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "persist config: %v", err)
+	}
+
 	return &emptypb.Empty{}, nil
 }
 
@@ -229,6 +388,19 @@ func (s *cliControlServer) RemoveInbound(ctx context.Context, request *daemon.Re
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "remove inbound: %v", err)
 	}
+
+	// Remove from stored options
+	s.configAccess.Lock()
+	if s.inboundOptions != nil {
+		delete(s.inboundOptions, request.Tag)
+	}
+	s.configAccess.Unlock()
+
+	err = s.persistConfig()
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "persist config: %v", err)
+	}
+
 	return &emptypb.Empty{}, nil
 }
 
@@ -329,6 +501,15 @@ func create() (*box.Box, context.CancelFunc, error) {
 		}
 		options.Log.DisableColor = true
 	}
+
+	// Store config for runtime persistence
+	if cliCtrlServer != nil {
+		cliCtrlServer.storeConfig(&options)
+		cliCtrlServer.userAccess.Lock()
+		cliCtrlServer.userManagers = make(map[string]*ssmapi.UserManager)
+		cliCtrlServer.userAccess.Unlock()
+	}
+
 	ctx, cancel := context.WithCancel(globalCtx)
 	instance, err := box.New(box.Options{
 		Context: ctx,
@@ -363,6 +544,7 @@ func create() (*box.Box, context.CancelFunc, error) {
 	// Register with gRPC control server
 	if cliCtrlServer != nil {
 		cliCtrlServer.setBox(instance)
+		cliCtrlServer.setCacheFile(service.FromContext[adapter.CacheFile](ctx))
 	}
 
 	return instance, cancel, nil
@@ -407,6 +589,9 @@ func run() error {
 		runtimeDebug.FreeOSMemory()
 		for {
 			osSignal := <-osSignals
+			if cliCtrlServer != nil {
+				cliCtrlServer.saveAllStats()
+			}
 			if osSignal == syscall.SIGHUP {
 				err = check()
 				if err != nil {

@@ -4,6 +4,7 @@ import (
 	"sync"
 
 	"github.com/sagernet/sing-box/adapter"
+	"github.com/sagernet/sing-box/option"
 	E "github.com/sagernet/sing/common/exceptions"
 )
 
@@ -20,6 +21,10 @@ func NewUserManager(inbound adapter.ManagedSSMServer, trafficManager *TrafficMan
 		server:         inbound,
 		trafficManager: trafficManager,
 	}
+}
+
+func (m *UserManager) TrafficManager() *TrafficManager {
+	return m.trafficManager
 }
 
 func (m *UserManager) postUpdate(updated bool) error {
@@ -89,4 +94,36 @@ func (m *UserManager) Delete(username string) error {
 	defer m.access.Unlock()
 	delete(m.usersMap, username)
 	return m.postUpdate(true)
+}
+
+func (m *UserManager) LoadUsers(users map[string]string) {
+	m.access.Lock()
+	defer m.access.Unlock()
+	for username, password := range users {
+		m.usersMap[username] = password
+	}
+}
+
+func ExtractUsersFromOptions(options any) map[string]string {
+	switch opts := options.(type) {
+	case *option.ShadowTLSInboundOptions:
+		users := make(map[string]string, len(opts.Users))
+		for _, u := range opts.Users {
+			users[u.Name] = u.Password
+		}
+		return users
+	case *option.ShadowsocksInboundOptions:
+		users := make(map[string]string, len(opts.Users))
+		for _, u := range opts.Users {
+			users[u.Name] = u.Password
+		}
+		return users
+	case *option.Hysteria2InboundOptions:
+		users := make(map[string]string, len(opts.Users))
+		for _, u := range opts.Users {
+			users[u.Name] = u.Password
+		}
+		return users
+	}
+	return nil
 }
