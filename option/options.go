@@ -21,6 +21,7 @@ type _Options struct {
 	Outbounds    []Outbound           `json:"outbounds,omitempty"`
 	Route        *RouteOptions        `json:"route,omitempty"`
 	Services     []Service            `json:"services,omitempty"`
+	GRPC         *GRPCOptions         `json:"grpc,omitempty"`
 	Experimental *ExperimentalOptions `json:"experimental,omitempty"`
 }
 
@@ -43,6 +44,11 @@ type LogOptions struct {
 	Output       string `json:"output,omitempty"`
 	Timestamp    bool   `json:"timestamp,omitempty"`
 	DisableColor bool   `json:"-"`
+}
+
+type GRPCOptions struct {
+	Listen string `json:"listen,omitempty"`
+	Secret string `json:"secret,omitempty"`
 }
 
 type StubOptions struct{}

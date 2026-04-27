@@ -3,6 +3,7 @@ package libbox
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net"
 	"os"
 	"path/filepath"
@@ -153,6 +154,7 @@ func (s *CommandServer) Start() error {
 	s.grpcServer = grpc.NewServer(serverOptions...)
 	daemon.RegisterStartedServiceServer(s.grpcServer, s.StartedService)
 	go s.grpcServer.Serve(listener)
+	s.WriteMessage(int32(log.LevelInfo), fmt.Sprintf("gRPC command server started on %s", listener.Addr()))
 	return nil
 }
 
