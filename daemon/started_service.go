@@ -3,6 +3,7 @@ package daemon
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"os"
 	"runtime"
 	"strings"
@@ -1570,6 +1571,7 @@ func (s *StartedService) ensureUserManager(inboundTag string) (*ssmapi.UserManag
 
 // ListUsers returns all users for the specified inbound.
 func (s *StartedService) ListUsers(ctx context.Context, request *ListUsersRequest) (*UserList, error) {
+	s.WriteMessage(log.LevelInfo, fmt.Sprintf("listing users for inbound %q", request.InboundTag))
 	um, err := s.ensureUserManager(request.InboundTag)
 	if err != nil {
 		return nil, err
@@ -1597,6 +1599,7 @@ func (s *StartedService) ListUsers(ctx context.Context, request *ListUsersReques
 
 // GetUser returns a single user by name.
 func (s *StartedService) GetUser(ctx context.Context, request *GetUserRequest) (*UserInfo, error) {
+	s.WriteMessage(log.LevelInfo, fmt.Sprintf("getting user %q from inbound %q", request.UserName, request.InboundTag))
 	um, err := s.ensureUserManager(request.InboundTag)
 	if err != nil {
 		return nil, err
@@ -1624,6 +1627,7 @@ func (s *StartedService) GetUser(ctx context.Context, request *GetUserRequest) (
 
 // AddUser creates a new user on the specified inbound.
 func (s *StartedService) AddUser(ctx context.Context, request *AddUserRequest) (*emptypb.Empty, error) {
+	s.WriteMessage(log.LevelInfo, fmt.Sprintf("adding user %q to inbound %q", request.UserName, request.InboundTag))
 	um, err := s.ensureUserManager(request.InboundTag)
 	if err != nil {
 		return nil, err
@@ -1637,6 +1641,7 @@ func (s *StartedService) AddUser(ctx context.Context, request *AddUserRequest) (
 
 // UpdateUser updates an existing user's password.
 func (s *StartedService) UpdateUser(ctx context.Context, request *UpdateUserRequest) (*emptypb.Empty, error) {
+	s.WriteMessage(log.LevelInfo, fmt.Sprintf("updating user %q on inbound %q", request.UserName, request.InboundTag))
 	um, err := s.ensureUserManager(request.InboundTag)
 	if err != nil {
 		return nil, err
@@ -1654,6 +1659,7 @@ func (s *StartedService) UpdateUser(ctx context.Context, request *UpdateUserRequ
 
 // DeleteUser removes a user from the specified inbound.
 func (s *StartedService) DeleteUser(ctx context.Context, request *DeleteUserRequest) (*emptypb.Empty, error) {
+	s.WriteMessage(log.LevelInfo, fmt.Sprintf("deleting user %q from inbound %q", request.UserName, request.InboundTag))
 	um, err := s.ensureUserManager(request.InboundTag)
 	if err != nil {
 		return nil, err
@@ -1707,6 +1713,7 @@ func (s *StartedService) GetInboundStats(ctx context.Context, request *GetInboun
 
 // ListInbounds returns all currently running inbounds.
 func (s *StartedService) ListInbounds(ctx context.Context, _ *emptypb.Empty) (*InboundList, error) {
+	s.WriteMessage(log.LevelInfo, "listing inbounds")
 	s.serviceAccess.RLock()
 	instance := s.instance
 	s.serviceAccess.RUnlock()
@@ -1730,6 +1737,7 @@ func (s *StartedService) ListInbounds(ctx context.Context, _ *emptypb.Empty) (*I
 
 // AddInbound creates a new inbound at runtime and persists the config.
 func (s *StartedService) AddInbound(ctx context.Context, request *AddInboundRequest) (*emptypb.Empty, error) {
+	s.WriteMessage(log.LevelInfo, fmt.Sprintf("adding inbound %q of type %q", request.Tag, request.Type))
 	s.serviceAccess.RLock()
 	instance := s.instance
 	s.serviceAccess.RUnlock()
@@ -1766,6 +1774,7 @@ func (s *StartedService) AddInbound(ctx context.Context, request *AddInboundRequ
 
 // RemoveInbound removes an inbound at runtime and persists the config.
 func (s *StartedService) RemoveInbound(ctx context.Context, request *RemoveInboundRequest) (*emptypb.Empty, error) {
+	s.WriteMessage(log.LevelInfo, fmt.Sprintf("removing inbound %q", request.Tag))
 	s.serviceAccess.RLock()
 	instance := s.instance
 	s.serviceAccess.RUnlock()

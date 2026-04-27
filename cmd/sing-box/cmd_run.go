@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"io"
 	"net"
 	"os"
@@ -30,6 +31,7 @@ import (
 	"github.com/spf13/cobra"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/reflection"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/emptypb"
@@ -37,6 +39,7 @@ import (
 
 var (
 	grpcListen string
+	grpcSecret string
 )
 
 var commandRun = &cobra.Command{
@@ -52,6 +55,7 @@ var commandRun = &cobra.Command{
 
 func init() {
 	commandRun.Flags().StringVar(&grpcListen, "grpc-listen", "", "gRPC control server listen address (e.g., unix:/tmp/sing-box.sock or 127.0.0.1:8080)")
+	commandRun.Flags().StringVar(&grpcSecret, "grpc-secret", "", "gRPC authentication secret (requires --grpc-listen)")
 	mainCommand.AddCommand(commandRun)
 }
 
@@ -77,6 +81,46 @@ func newCLIControlServer(box *box.Box, configPath string) *cliControlServer {
 		configPath:     configPath,
 		inboundOptions: make(map[string]*option.Inbound),
 	}
+}
+
+func unaryAuthInterceptor(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
+	if grpcSecret == "" {
+		return handler(ctx, req)
+	}
+	md, ok := metadata.FromIncomingContext(ctx)
+	if !ok {
+		return nil, grpcAuthErr("missing metadata")
+	}
+	values := md.Get("x-command-secret")
+	if len(values) == 0 {
+		return nil, grpcAuthErr("missing authentication secret")
+	}
+	if values[0] != grpcSecret {
+		return nil, grpcAuthErr("invalid authentication secret")
+	}
+	return handler(ctx, req)
+}
+
+func streamAuthInterceptor(srv any, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
+	if grpcSecret == "" {
+		return handler(srv, ss)
+	}
+	md, ok := metadata.FromIncomingContext(ss.Context())
+	if !ok {
+		return grpcAuthErr("missing metadata")
+	}
+	values := md.Get("x-command-secret")
+	if len(values) == 0 {
+		return grpcAuthErr("missing authentication secret")
+	}
+	if values[0] != grpcSecret {
+		return grpcAuthErr("invalid authentication secret")
+	}
+	return handler(srv, ss)
+}
+
+func grpcAuthErr(msg string) error {
+	return status.Error(codes.Unauthenticated, msg)
 }
 
 func (s *cliControlServer) setBox(box *box.Box) {
@@ -208,6 +252,7 @@ func (s *cliControlServer) ensureUserManager(inboundTag string) (*ssmapi.UserMan
 }
 
 func (s *cliControlServer) ListUsers(ctx context.Context, request *daemon.ListUsersRequest) (*daemon.UserList, error) {
+	log.Info(fmt.Sprintf("listing users for inbound %q", request.InboundTag))
 	um, err := s.ensureUserManager(request.InboundTag)
 	if err != nil {
 		return nil, err
@@ -224,6 +269,7 @@ func (s *cliControlServer) ListUsers(ctx context.Context, request *daemon.ListUs
 }
 
 func (s *cliControlServer) GetUser(ctx context.Context, request *daemon.GetUserRequest) (*daemon.UserInfo, error) {
+	log.Info(fmt.Sprintf("getting user %q from inbound %q", request.UserName, request.InboundTag))
 	um, err := s.ensureUserManager(request.InboundTag)
 	if err != nil {
 		return nil, err
@@ -239,6 +285,7 @@ func (s *cliControlServer) GetUser(ctx context.Context, request *daemon.GetUserR
 }
 
 func (s *cliControlServer) AddUser(ctx context.Context, request *daemon.AddUserRequest) (*emptypb.Empty, error) {
+	log.Info(fmt.Sprintf("adding user %q to inbound %q", request.UserName, request.InboundTag))
 	um, err := s.ensureUserManager(request.InboundTag)
 	if err != nil {
 		return nil, err
@@ -251,6 +298,7 @@ func (s *cliControlServer) AddUser(ctx context.Context, request *daemon.AddUserR
 }
 
 func (s *cliControlServer) UpdateUser(ctx context.Context, request *daemon.UpdateUserRequest) (*emptypb.Empty, error) {
+	log.Info(fmt.Sprintf("updating user %q on inbound %q", request.UserName, request.InboundTag))
 	um, err := s.ensureUserManager(request.InboundTag)
 	if err != nil {
 		return nil, err
@@ -267,6 +315,7 @@ func (s *cliControlServer) UpdateUser(ctx context.Context, request *daemon.Updat
 }
 
 func (s *cliControlServer) DeleteUser(ctx context.Context, request *daemon.DeleteUserRequest) (*emptypb.Empty, error) {
+	log.Info(fmt.Sprintf("deleting user %q from inbound %q", request.UserName, request.InboundTag))
 	um, err := s.ensureUserManager(request.InboundTag)
 	if err != nil {
 		return nil, err
@@ -324,6 +373,7 @@ func (s *cliControlServer) GetInboundStats(ctx context.Context, request *daemon.
 }
 
 func (s *cliControlServer) ListInbounds(ctx context.Context, _ *emptypb.Empty) (*daemon.InboundList, error) {
+	log.Info("listing inbounds")
 	if s.box == nil {
 		return &daemon.InboundList{}, nil
 	}
@@ -341,6 +391,7 @@ func (s *cliControlServer) ListInbounds(ctx context.Context, _ *emptypb.Empty) (
 }
 
 func (s *cliControlServer) AddInbound(ctx context.Context, request *daemon.AddInboundRequest) (*emptypb.Empty, error) {
+	log.Info(fmt.Sprintf("adding inbound %q of type %q", request.Tag, request.Type))
 	if s.box == nil {
 		return nil, os.ErrInvalid
 	}
@@ -377,6 +428,7 @@ func (s *cliControlServer) AddInbound(ctx context.Context, request *daemon.AddIn
 }
 
 func (s *cliControlServer) RemoveInbound(ctx context.Context, request *daemon.RemoveInboundRequest) (*emptypb.Empty, error) {
+	log.Info(fmt.Sprintf("removing inbound %q", request.Tag))
 	if s.box == nil {
 		return nil, os.ErrInvalid
 	}
@@ -555,26 +607,45 @@ func run() error {
 	signal.Notify(osSignals, os.Interrupt, syscall.SIGTERM, syscall.SIGHUP)
 	defer signal.Stop(osSignals)
 
+	// Resolve gRPC settings: CLI flags take precedence over config file
+	grpcListenAddr := grpcListen
+	grpcAuthSecret := grpcSecret
+	if options, err := readConfigAndMerge(); err == nil && options.GRPC != nil {
+		if grpcListenAddr == "" && options.GRPC.Listen != "" {
+			grpcListenAddr = options.GRPC.Listen
+		}
+		if grpcAuthSecret == "" && options.GRPC.Secret != "" {
+			grpcAuthSecret = options.GRPC.Secret
+		}
+	}
+	// Update package-level var so auth interceptors use the resolved secret
+	grpcSecret = grpcAuthSecret
+
 	// Start gRPC control server if configured
 	var grpcListener net.Listener
 	var grpcServer *grpc.Server
-	if grpcListen != "" {
+	if grpcListenAddr != "" {
 		var err error
 		cliCtrlServer = newCLIControlServer(nil, configPaths[0])
-		if strings.HasPrefix(grpcListen, "unix:") {
-			sockPath := grpcListen[5:]
+		if strings.HasPrefix(grpcListenAddr, "unix:") {
+			sockPath := grpcListenAddr[5:]
 			_ = os.Remove(sockPath)
 			grpcListener, err = net.Listen("unix", sockPath)
 		} else {
-			grpcListener, err = net.Listen("tcp", grpcListen)
+			grpcListener, err = net.Listen("tcp", grpcListenAddr)
 		}
 		if err != nil {
-			return E.Cause(err, "gRPC listen on ", grpcListen)
+			return E.Cause(err, "gRPC listen on ", grpcListenAddr)
 		}
-		grpcServer = grpc.NewServer()
+		serverOpts := []grpc.ServerOption{}
+		if grpcSecret != "" {
+			serverOpts = append(serverOpts, grpc.UnaryInterceptor(unaryAuthInterceptor), grpc.StreamInterceptor(streamAuthInterceptor))
+		}
+		grpcServer = grpc.NewServer(serverOpts...)
 		daemon.RegisterStartedServiceServer(grpcServer, cliCtrlServer)
 		reflection.Register(grpcServer)
 		go grpcServer.Serve(grpcListener)
+		log.Info(fmt.Sprintf("gRPC command server started on %s", grpcListenAddr))
 	}
 
 	for {

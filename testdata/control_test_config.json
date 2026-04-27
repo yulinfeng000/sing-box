@@ -7,7 +7,7 @@
       "type": "shadowsocks",
       "tag": "ss-in",
       "method": "2022-blake3-aes-128-gcm",
-      "password": "/cCGFuyCfXPWDs38YZizrw=="
+      "password": "QZaglNMKagCkksjFqpJwKw=="
     },
     {
       "type": "shadowtls",
@@ -19,7 +19,7 @@
       "users": [
         {
           "name": "tomcat",
-          "password": "FJWW9JZQcbR8Pp4nQPXmDg=="
+          "password": "dsEa54ZiRtDnu57WkCR4Dw=="
         }
       ],
       "handshake": {
@@ -33,5 +33,9 @@
       "type": "direct",
       "tag": "direct"
     }
-  ]
+  ],
+  "grpc": {
+    "listen": "unix:/tmp/sing-box.sock",
+    "secret": "okNy34c8AZiSLJIpASX/mg=="
+  }
 }
