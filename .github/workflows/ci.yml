@@ -15,16 +15,16 @@ concurrency:
 
 jobs:
   build:
-    name: Build
-    runs-on: ubuntu-latest
+    name: Build (${{ matrix.os }}, ${{ matrix.arch }})
+    runs-on: ${{ matrix.runs_on }}
     strategy:
+      fail-fast: false
       matrix:
         include:
-          - { os: linux, arch: amd64 }
-          - { os: linux, arch: arm64 }
-          - { os: darwin, arch: amd64 }
-          - { os: darwin, arch: arm64 }
-          - { os: windows, arch: amd64 }
+          - { os: linux, arch: amd64, runs_on: ubuntu-latest }
+          - { os: linux, arch: arm64, runs_on: ubuntu-latest }
+          - { os: darwin, arch: amd64, runs_on: macos-latest }
+          - { os: darwin, arch: arm64, runs_on: macos-latest }
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -34,18 +34,18 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version: ~1.25.9
+          go-version: ~1.24.7
 
       - name: Build
         run: |
           mkdir -p dist
           TAGS=$(cat release/DEFAULT_BUILD_TAGS_OTHERS 2>/dev/null || echo "")
-          go build -v -trimpath -o dist/sing-box${{ matrix.os == 'windows' && '.exe' || '' }} \
+          go build -v -trimpath -o dist/sing-box \
             -tags "$TAGS" \
             -ldflags "-s -w -buildid=" \
             ./cmd/sing-box
         env:
-          CGO_ENABLED: 0
+          CGO_ENABLED: ${{ matrix.os == 'darwin' && '1' || '0' }}
           GOOS: ${{ matrix.os }}
           GOARCH: ${{ matrix.arch }}
 
@@ -55,13 +55,8 @@ jobs:
           DIR_NAME="sing-box-${{ github.sha }}-${{ matrix.os }}-${{ matrix.arch }}"
           mkdir -p "${DIR_NAME}"
           cp ../LICENSE "${DIR_NAME}"
-          if [ '${{ matrix.os }}' = 'windows' ]; then
-            cp "sing-box.exe" "${DIR_NAME}/"
-            zip -r "${DIR_NAME}.zip" "${DIR_NAME}"
-          else
-            cp "sing-box" "${DIR_NAME}/"
-            tar -czvf "${DIR_NAME}.tar.gz" "${DIR_NAME}"
-          fi
+          cp "sing-box" "${DIR_NAME}/"
+          tar -czvf "${DIR_NAME}.tar.gz" "${DIR_NAME}"
           rm -r "${DIR_NAME}"
 
       - name: Upload artifact
@@ -69,3 +64,46 @@ jobs:
         with:
           name: binary-${{ matrix.os }}-${{ matrix.arch }}
           path: dist/
+
+  docker:
+    name: Docker image
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Setup QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Docker meta
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/sing-box
+          tags: |
+            type=ref,event=branch
+            type=sha,prefix=
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
